@@ -569,6 +569,11 @@ async function main() {
   check('client.js 数据页签查询联动（runQuery + 落盘 dsh/output + 命中 N/M + 设为当前图层）',
     qryKeys.every((k) => clientSrc.includes(k)),
     qryKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 查询结果联动属性表（2026-08-18 第三十八轮）：命中即览（自动 data.preview 结果集）
+  const qryTblKeys = ['查询结果联动属性表', 'pv2'];
+  check('client.js 数据页签查询结果联动属性表（runQuery 命中即览）',
+    qryTblKeys.every((k) => clientSrc.includes(k)),
+    qryTblKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 坐标页签投影变换联动（2026-08-18 第二十七轮）：runReproject 落盘 + 计数 + 设为当前图层
   const crsKeys = ['runReproject', 'kanyu-reproject-', 'crs.search', '已设为当前图层'];
   check('client.js 坐标页签投影变换联动（runReproject + 落盘 dsh/output + 设为当前图层）',
@@ -633,6 +638,9 @@ async function main() {
   check('pkg/client.js 数据页签查询联动（与动态半同契约）',
     qryKeys.every((k) => pkgClientSrc.includes(k)),
     qryKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 数据页签查询结果联动属性表（与动态半同契约）',
+    qryTblKeys.every((k) => pkgClientSrc.includes(k)),
+    qryTblKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 坐标页签投影变换联动（与动态半同契约）',
     crsKeys.every((k) => pkgClientSrc.includes(k)),
     crsKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

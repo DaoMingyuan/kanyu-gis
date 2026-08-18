@@ -238,6 +238,12 @@ function TabData(props) {
       store.path = outPath; setPath(outPath); props.notify()
       setOut('命中 ' + (hit === null ? '?' : hit) + (total === null ? '' : '/' + total) +
         ' 要素 → 已设为当前图层: ' + outPath)
+      // 查询结果联动属性表：命中行即结果集，自动载入预览（免再点「属性表」）；
+      // 预览不可达时降级仅保留计数回执
+      try {
+        const pv2 = await host.call('data.preview', { path: outPath, limit: 50 })
+        if (pv2 && pv2.ok) setTable(pv2)
+      } catch (e) { /* 结果预览不可达时仅保留计数回执 */ }
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
