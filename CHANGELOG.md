@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.3.0] — 2026-08-18
+
+- 新增 `pkg/` 常驻静态插件适配器：`new Function` 求值 `plugin/host.js` 单一事实源，
+  harness façade 折算（`registerTool` → `ctx.tools.register`，defineTool 参数方言 →
+  标准 JSON Schema）；命名导出 `name`/`inject`/`apply`（无 default，DSH 约定）。
+- **本机 DSH web profile 常驻安装落地**：`dsh plugin --profile web add file:.../dsh/pkg`
+  + `cordis.patch.yml` insert 行（`config.hostSource` 显式路径）；启动实测激活，
+  8 个 `kanyu_*` 工具注册进真实工具注册表。
+- 实测教训入档：普通插件必须 `inject` 声明服务；pnpm file: 为副本需重装刷新；
+  `import.meta.url` 副本路径须以 config.hostSource 兜底。
+
 ## [0.2.0] — 2026-08-18
 
 - 新增 `tools/test_plugin.mjs` 组件本地测试器：node:vm 等价沙箱加载 Host 半

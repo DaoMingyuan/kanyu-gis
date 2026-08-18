@@ -1,0 +1,8 @@
+{
+  "name": "kanyu-gis-dsh-plugin",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "堪舆 GIS × DeepSeek Harness 常驻静态插件：dsh/plugin/host.js 的安装适配器（工具面注册进 web profile 工具注册表）"
+}
