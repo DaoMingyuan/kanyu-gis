@@ -1,0 +1,33 @@
+# kanyu-gis 组件仓 CI —— 无模型、无 kanyu CLI 的静态契约回归。
+#
+# 单一事实来源在堪舆主仓 `dsh/.github/workflows/component-test.yml`，
+# 经会签簿同步流程复制进独立组件仓（DaoMingyuan/kanyu-gis）的
+# `.github/workflows/`（GitHub 只识别仓根该目录，主仓内本文件仅为源）。
+#
+# 覆盖：`tools/test_plugin.mjs --static`——装载/17 RPC 注册/8 动态工具注册、
+# 纯本地 RPC（catalog.list/crs.presets/geoprocess.list/edit 全组/scene3d.data）、
+# Client 半语法与结构契约、pkg 静态双面包契约（exports/dsh.client/工厂 id/
+# preset 门控/两半 RPC 漂移锁/RPC 桥实测 crs.presets 200）。
+#
+# 边界：调用 kanyu CLI 的断言（ping/introspect/data.*/render.map/
+# crs.reproject/geoprocess.run/动态工具抽查）在 CI 无 CLI 此前提，整组跳过，
+# 由本机全量模式（`node dsh/tools/test_plugin.mjs`，40 断言）覆盖；
+# verify_preset.mjs 依赖本机 DSH npx 缓存检出（绝对路径），不可进 CI。
+
+name: component-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 静态契约回归（零依赖模式）
+        run: node tools/test_plugin.mjs --static

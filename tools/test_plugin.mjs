@@ -9,7 +9,11 @@
  * Client 半（dsh/plugin/client.js）为浏览器侧 React 代码，这里做语法解析 +
  * 结构静态断言（页签/slot 注册），不做 DOM 渲染。
  *
- * 用法（仓库根）：node dsh/tools/test_plugin.mjs
+ * 用法（仓库根）：node dsh/tools/test_plugin.mjs [--static]
+ *   --static：零依赖 CI 模式——跳过一切调用 kanyu CLI 的断言
+ *   （ping / introspect / data.xxx / render.map / crs.reproject /
+ *   geoprocess.run / 动态工具抽查），
+ *   RPC 桥实测改用纯本地方法 crs.presets；组件仓（根布局）自动识别。
  * 退出码：0 = 全部通过；1 = 存在失败项；2 = 环境/装载错误。
  * 副作用：仅在 target/tmp/ 与 dsh/output/ 写临时文件，结束自清理。
  */
@@ -19,10 +23,18 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// 布局自检：主仓为 <root>/dsh/tools/ 三级；独立组件仓（kanyu-gis）为 <root>/tools/ 两级
+const TOOLS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PARENT_DIR = path.dirname(TOOLS_DIR);
+const IS_MAIN_LAYOUT = existsSync(path.join(path.dirname(PARENT_DIR), 'dsh', 'plugin', 'host.js'));
+const REPO_ROOT = IS_MAIN_LAYOUT ? path.dirname(PARENT_DIR) : PARENT_DIR;
+const DSH_DIR = IS_MAIN_LAYOUT ? 'dsh' : '.';
+const dshPath = (...segs) => path.join(DSH_DIR, ...segs);
 const WORKSPACE = REPO_ROOT; // 等价于 DSH 会话工作区根
-const EXAMPLE = path.join('dsh', 'examples', 'buildings.geojson');
+const EXAMPLE = dshPath('examples', 'buildings.geojson');
+const CATALOG_DIR = IS_MAIN_LAYOUT ? 'dsh' : 'examples';
 const TMP_DIR = path.join(REPO_ROOT, 'target', 'tmp', 'dsh-test');
+const STATIC_ONLY = process.argv.includes('--static') || process.env.KANYU_TEST_STATIC === '1';
 
 // ---------- 结果收集 ----------
 const results = [];
@@ -129,51 +141,63 @@ async function main() {
   await fsp.mkdir(TMP_DIR, { recursive: true });
 
   // 装载
-  const plugin = await loadPlugin(path.join('dsh', 'plugin', 'host.js'));
+  const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
   check('RPC 注册齐全（17 个）', rpc.size === 17, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
+  if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
+    '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
-  // ① 系统自省
-  const ping = await callRpc('ping');
-  check('ping：七大能力 + 13 地理处理工具', ping.ok && ping.capabilities.length === 7 && ping.tools.length === 13,
-    'kanyu=' + String(ping.kanyu).slice(0, 40));
-  const intro = await callRpc('introspect');
-  check('introspect：kanyu introspect --json 可达', intro.ok && /kanyu-core/.test(intro.stdout));
+  // ① 系统自省（CLI 依赖）
+  if (!STATIC_ONLY) {
+    const ping = await callRpc('ping');
+    check('ping：七大能力 + 13 地理处理工具', ping.ok && ping.capabilities.length === 7 && ping.tools.length === 13,
+      'kanyu=' + String(ping.kanyu).slice(0, 40));
+    const intro = await callRpc('introspect');
+    check('introspect：kanyu introspect --json 可达', intro.ok && /kanyu-core/.test(intro.stdout));
+  }
 
   // ② GIS 数据目录读取（能力 2/4）
-  const cat = await callRpc('catalog.list', { dir: 'dsh', depth: 3 });
+  const cat = await callRpc('catalog.list', { dir: CATALOG_DIR, depth: 3 });
   const exts = new Set((cat.items || []).map((i) => i.ext));
-  check('catalog.list：扫描 dsh/ 检出 geojson（GIS 扩展名矩阵过滤）', cat.ok && cat.count >= 1 && exts.has('geojson'),
+  check('catalog.list：扫描 ' + CATALOG_DIR + '/ 检出 geojson（GIS 扩展名矩阵过滤）', cat.ok && cat.count >= 1 && exts.has('geojson'),
     'count=' + cat.count + ' exts=' + [...exts].join(','));
-  const info = await callRpc('data.info', { path: EXAMPLE });
-  check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
-  const query = await callRpc('data.query', { path: EXAMPLE, filter: 'height > 10' });
-  let queryHits = -1;
-  try { queryHits = JSON.parse(query.stdout.slice(query.stdout.search(/[{[]/))).features.length; } catch { /* 解析失败即 -1 */ }
-  check('data.query：filter "height > 10" 有命中', query.ok && queryHits > 0, 'matched=' + queryHits);
-  const val = await callRpc('data.validate', { path: EXAMPLE });
-  check('data.validate：执行不抛错（GeoJSON 非宗地 TXT，宽松断言）', typeof val.exitCode === 'number');
+  if (!STATIC_ONLY) {
+    const info = await callRpc('data.info', { path: EXAMPLE });
+    check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
+    const query = await callRpc('data.query', { path: EXAMPLE, filter: 'height > 10' });
+    let queryHits = -1;
+    try { queryHits = JSON.parse(query.stdout.slice(query.stdout.search(/[{[]/))).features.length; } catch { /* 解析失败即 -1 */ }
+    check('data.query：filter "height > 10" 有命中', query.ok && queryHits > 0, 'matched=' + queryHits);
+    const val = await callRpc('data.validate', { path: EXAMPLE });
+    check('data.validate：执行不抛错（GeoJSON 非宗地 TXT，宽松断言）', typeof val.exitCode === 'number');
+  }
 
-  // ③ 地图面板（能力 1）
-  const render = await callRpc('render.map', { path: EXAMPLE, theme: 'light', width: 480, height: 320 });
-  check('render.map：PNG 出图 + base64 回传', render.run && render.run.ok && render.pngBase64 && render.pngBase64.length > 500,
-    render.out ? 'out=' + path.basename(render.out) + ' b64=' + (render.pngBase64 || '').length : '无输出');
+  // ③ 地图面板（能力 1，CLI 依赖）
+  if (!STATIC_ONLY) {
+    const render = await callRpc('render.map', { path: EXAMPLE, theme: 'light', width: 480, height: 320 });
+    check('render.map：PNG 出图 + base64 回传', render.run && render.run.ok && render.pngBase64 && render.pngBase64.length > 500,
+      render.out ? 'out=' + path.basename(render.out) + ' b64=' + (render.pngBase64 || '').length : '无输出');
+  }
 
   // ④ 坐标框架（能力 3）
   const presets = await callRpc('crs.presets');
   check('crs.presets：7 条常用坐标系', presets.ok && presets.presets.length === 7);
-  const reproj = await callRpc('crs.reproject', { path: EXAMPLE, from: 'EPSG:4326', to: 'EPSG:4490' });
-  check('crs.reproject：4326→4490 执行成功', reproj.ok, reproj.stderr ? reproj.stderr.slice(0, 80) : '');
+  if (!STATIC_ONLY) {
+    const reproj = await callRpc('crs.reproject', { path: EXAMPLE, from: 'EPSG:4326', to: 'EPSG:4490' });
+    check('crs.reproject：4326→4490 执行成功', reproj.ok, reproj.stderr ? reproj.stderr.slice(0, 80) : '');
+  }
 
   // ⑤ 地理处理（能力 5）
   const gpList = await callRpc('geoprocess.list');
   check('geoprocess.list：13 工具白名单', gpList.ok && gpList.tools.length === 13);
-  const gpOut = path.join(TMP_DIR, 'buffer-out.geojson');
-  const gp = await callRpc('geoprocess.run', { tool: 'buffer', input: EXAMPLE, output: gpOut, params: { distance: 0.001 } });
-  let gpFeat = 0;
-  try { gpFeat = JSON.parse(await fsp.readFile(gpOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
-  check('geoprocess.run buffer：输出 4 要素', gp.ok && gpFeat === 4, 'features=' + gpFeat);
+  if (!STATIC_ONLY) {
+    const gpOut = path.join(TMP_DIR, 'buffer-out.geojson');
+    const gp = await callRpc('geoprocess.run', { tool: 'buffer', input: EXAMPLE, output: gpOut, params: { distance: 0.001 } });
+    let gpFeat = 0;
+    try { gpFeat = JSON.parse(await fsp.readFile(gpOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
+    check('geoprocess.run buffer：输出 4 要素', gp.ok && gpFeat === 4, 'features=' + gpFeat);
+  }
 
   // ⑥ 地理编辑（能力 6）
   const ops = await callRpc('edit.ops');
@@ -215,16 +239,18 @@ async function main() {
   check('scene3d.data：bbox + 高度提取', s3d.ok && Array.isArray(s3d.bbox) && s3d.count >= 3,
     `count=${s3d.count}/${s3d.total}`);
 
-  // ⑧ 动态工具抽查（Harness function-calling 面）
-  const tGp = tools.get('kanyu_geoprocess');
-  const gpText = tGp && await tGp.execute({ tool: 'stats', input: EXAMPLE });
-  check('动态工具 kanyu_geoprocess(stats)：返回统计文本', typeof gpText === 'string' && /完成/.test(gpText));
-  const tCat = tools.get('kanyu_catalog');
-  const catText = tCat && await tCat.execute({ dir: 'dsh/examples', depth: 1 });
-  check('动态工具 kanyu_catalog：目录清单文本', typeof catText === 'string' && /GEOJSON/.test(catText));
+  // ⑧ 动态工具抽查（Harness function-calling 面，CLI 依赖）
+  if (!STATIC_ONLY) {
+    const tGp = tools.get('kanyu_geoprocess');
+    const gpText = tGp && await tGp.execute({ tool: 'stats', input: EXAMPLE });
+    check('动态工具 kanyu_geoprocess(stats)：返回统计文本', typeof gpText === 'string' && /完成/.test(gpText));
+    const tCat = tools.get('kanyu_catalog');
+    const catText = tCat && await tCat.execute({ dir: dshPath('examples'), depth: 1 });
+    check('动态工具 kanyu_catalog：目录清单文本', typeof catText === 'string' && /GEOJSON/.test(catText));
+  }
 
   // ---------- Client 半静态校验 ----------
-  const clientSrc = await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'plugin', 'client.js'), 'utf8');
+  const clientSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'client.js')), 'utf8');
   let clientParses = true;
   try { new vm.Script(`(function(){${clientSrc}\n})()`, { filename: 'client.js' }); } catch (e) { clientParses = false; }
   check('client.js 语法解析', clientParses);
@@ -236,7 +262,7 @@ async function main() {
   check('client.js 七能力页签 + 关于', tabsOk);
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
-  const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'pkg', 'package.json'), 'utf8'));
+  const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
   check('pkg/package.json：exports 三键（./client + ./package.json 防封装拦截）',
     pkgJson.exports && pkgJson.exports['.'] === './index.js'
       && pkgJson.exports['./client'] === './client.js'
@@ -244,7 +270,7 @@ async function main() {
   check('pkg/package.json：dsh.client 声明 web 平台',
     pkgJson.dsh && pkgJson.dsh.client && pkgJson.dsh.client.platform === 'web');
 
-  const pkgClientSrc = await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'pkg', 'client.js'), 'utf8');
+  const pkgClientSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'client.js')), 'utf8');
   let pkgClientParses = true;
   try { new vm.Script(pkgClientSrc, { filename: 'pkg/client.js' }); } catch (e) { pkgClientParses = false; }
   check('pkg/client.js 语法解析（classic script 形态）', pkgClientParses);
@@ -266,7 +292,7 @@ async function main() {
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping
-  const pkgIndexSrc = await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'pkg', 'index.js'), 'utf8');
+  const pkgIndexSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'index.js')), 'utf8');
   check('pkg/index.js inject 含 webServer（RPC 桥前提）', /inject\s*=\s*\[[^\]]*'webServer'/.test(pkgIndexSrc));
   let route = null;
   let staticToolCount = 0;
@@ -277,28 +303,30 @@ async function main() {
       return ctx.get(key); // shell/fs/sandboxPolicy 复用上方等价面
     },
   };
-  const pkgMod = await import(pathToFileURL(path.join(REPO_ROOT, 'dsh', 'pkg', 'index.js')).href);
-  pkgMod.apply(adapterCtx, { hostSource: path.join(REPO_ROOT, 'dsh', 'plugin', 'host.js') });
+  const pkgMod = await import(pathToFileURL(path.join(REPO_ROOT, dshPath('pkg', 'index.js'))).href);
+  pkgMod.apply(adapterCtx, { hostSource: path.join(REPO_ROOT, dshPath('plugin', 'host.js')) });
   check('pkg/index.js apply：8 工具 + /kanyu-gis 前缀路由注册',
     staticToolCount === 8 && route && route.kind === 'prefix' && route.path === '/kanyu-gis',
     'tools=' + staticToolCount + ' route=' + (route && route.path));
-  // 模拟一次 POST /kanyu-gis/call {method:'ping'}（node:http req/res 最小等价面）
+  // 模拟一次 POST /kanyu-gis/call（node:http req/res 最小等价面）；
+  // --static 模式用纯本地方法 crs.presets（ping 需 kanyu CLI，CI 无此前提）
+  const bridgeMethod = STATIC_ONLY ? 'crs.presets' : 'ping';
   let bridgeCode = 0; let bridgeBody = '';
   const mockReq = new (await import('node:events')).EventEmitter();
   mockReq.method = 'POST'; mockReq.url = '/kanyu-gis/call';
   const mockRes = { writeHead(c) { bridgeCode = c }, end(b) { bridgeBody = b } };
   await route.handler(mockReq, mockRes);
-  mockReq.emit('data', JSON.stringify({ method: 'ping', args: {} }));
+  mockReq.emit('data', JSON.stringify({ method: bridgeMethod, args: {} }));
   mockReq.emit('end');
-  for (let i = 0; i < 300 && !bridgeBody; i++) await new Promise((r) => setTimeout(r, 100)); // ping 走真实 kanyu CLI
+  for (let i = 0; i < 300 && !bridgeBody; i++) await new Promise((r) => setTimeout(r, 100));
   let bridgeOk = false;
   try { bridgeOk = bridgeCode === 200 && JSON.parse(bridgeBody).ok === true; } catch { /* 断言兜底 */ }
-  check('pkg/index.js RPC 桥实测：POST /kanyu-gis/call ping → 200 + ok', bridgeOk,
+  check('pkg/index.js RPC 桥实测：POST /kanyu-gis/call ' + bridgeMethod + ' → 200 + ok', bridgeOk,
     'code=' + bridgeCode + ' body=' + bridgeBody.slice(0, 60));
 
   // ---------- 清理 ----------
   await fsp.rm(TMP_DIR, { recursive: true, force: true });
-  await fsp.rm(path.join(REPO_ROOT, 'dsh', 'output'), { recursive: true, force: true });
+  await fsp.rm(path.join(REPO_ROOT, dshPath('output')), { recursive: true, force: true });
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} 通过`);

@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.6.0] — 2026-08-18
+
+- **组件仓 CI 落地**：`tools/test_plugin.mjs` 新增 `--static` 零依赖模式——跳过一切
+  调用 kanyu CLI 的断言（ping/introspect/data.xxx/render.map/crs.reproject/
+  geoprocess.run/动态工具抽查），RPC 桥实测改用纯本地方法 `crs.presets`；
+  布局自检——主仓 `dsh/` 子目录与独立组件仓根布局自动识别（REPO_ROOT/DSH_DIR）。
+  新增 `.github/workflows/component-test.yml`（同步进组件仓仓根 .github/workflows/，
+  push/PR 触发，ubuntu + node 20 跑静态契约回归）。本机实证：主仓 static 31/31、
+  全量 40/40 回归不破、模拟组件仓根布局 static 31/31。
+- 边界入档：verify_preset.mjs 依赖本机 DSH npx 缓存检出绝对路径，不可进 CI。
+
 ## [0.4.2] — 2026-08-18
 
 - `presets/kanyu-gis/skills/kanyu-gis/SKILL.md` 新增「DSH 组件形态」章节，对齐组件
