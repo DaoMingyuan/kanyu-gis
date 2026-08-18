@@ -102,15 +102,6 @@ function TabCatalog(props) {
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
-  function itemRow(it, i) {
-    return h('div', {
-      key: i, className: 'kyg-list-item',
-      onClick: () => { store.path = it.path; props.notify() },
-    },
-      h('span', { className: 'ext' }, it.ext.toUpperCase()),
-      h('span', null, it.name),
-      h('span', { className: 'sz' }, it.size === null ? '' : Math.round(it.size / 1024) + 'KB'))
-  }
   // 服务链接分类：WFS GetCapabilities 图层发现（services.discover，对齐壳层 services.rs）
   const [svcUrl, setSvcUrl] = React.useState('')
   const [svcLayers, setSvcLayers] = React.useState(null)
@@ -163,8 +154,17 @@ function TabCatalog(props) {
         h('button', { className: 'kyg-btn', style: { marginLeft: 'auto', padding: '1px 8px', fontSize: '11px' }, disabled: svcBusy, onClick: () => fetchLayer(l.name) }, '拉取')))
         : h('div', { className: 'kyg-hint' }, '暂无服务链接——输入基址点「发现图层」'))
   }
+  function catRows(cat) {
+    const pick = (it, ext, text, clickable) => ({ key: it.path || text, ext, text,
+      size: it.size, onClick: clickable ? () => { store.path = it.path; props.notify() } : undefined })
+    if (cat.name === '数据库') return (data.dbItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
+    if (cat.name === '本机数据') return (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
+    if (cat.name === '地图框') return (data.mapItems || []).map(it => pick(it, 'PNG', it.name, false))
+    if (cat.name === '布局框') return (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null }))
+    return []
+  }
   function catSection(cat) {
-    const list = cat.name === '数据库' ? (data.dbItems || []) : cat.name === '本机数据' ? (data.dataItems || []) : []
+    const rows = catRows(cat)
     // 壳层契约：默认仅「本机数据」展开
     const isOpen = open[cat.name] !== undefined ? open[cat.name] : cat.name === '本机数据'
     return h('div', { key: cat.name },
@@ -173,7 +173,14 @@ function TabCatalog(props) {
         h('span', null, cat.name),
         h('span', { className: 'ct' }, cat.count)),
       isOpen && (cat.name === '服务链接' ? svcSection()
-        : list.length ? list.map(itemRow)
+        : rows.length ? rows.map((r, i) => h('div', {
+            key: i, className: 'kyg-list-item',
+            style: r.onClick ? undefined : { cursor: 'default' },
+            onClick: r.onClick,
+          },
+            h('span', { className: 'ext' }, r.ext),
+            h('span', null, r.text),
+            h('span', { className: 'sz' }, r.size === null || r.size === undefined ? '' : Math.round(r.size / 1024) + 'KB')))
         : h('div', { className: 'kyg-hint' }, cat.placeholder || '（空）')))
   }
   return h('div', null,

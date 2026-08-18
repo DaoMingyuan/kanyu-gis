@@ -173,6 +173,15 @@ async function main() {
       && (cat.dbItems || []).some((i) => i.ext === 'kyu')
       && (cat.dataItems || []).every((i) => i.ext !== 'kdb' && i.ext !== 'kyu'),
     'cats=' + catNames.join('/') + ' db=' + (cat.dbItems || []).length + ' data=' + (cat.dataItems || []).length);
+  // 地图框/布局框组件语境对应物（2026-08-18 第二十轮）：渲染产物 + .kyu layouts 清单
+  const catCounts = {};
+  for (const c of cat.categories || []) catCounts[c.name] = c.count;
+  check('catalog.list：布局框解析 .kyu layouts（demo.kyu 夹具「示例布局A4横」入列）',
+    Array.isArray(cat.mapItems) && Array.isArray(cat.layoutItems)
+      && (cat.layoutItems || []).some((l) => l.title === '示例布局A4横')
+      && catCounts['布局框'] === (cat.layoutItems || []).length
+      && catCounts['地图框'] === (cat.mapItems || []).length,
+    'layouts=' + JSON.stringify(cat.layoutItems) + ' maps=' + (cat.mapItems || []).length);
   // 服务链接：WFS GetCapabilities 最小提取（离线 xml 路径，两种模式皆覆盖；2026-08-18 第十五轮）
   const capsXml = await fsp.readFile(path.join(REPO_ROOT, dshPath('examples', 'wfs_capabilities.xml')), 'utf8');
   const svc = await callRpc('services.discover', { xml: capsXml });
@@ -337,8 +346,8 @@ async function main() {
   check('client.js 地图页签符号化控件（buildStyle + graduated/categorical）',
     symKeys.every((k) => clientSrc.includes(k)),
     symKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
-  // 目录页签五分类（2026-08-18 第十四轮）：分类头 + 数据库/本机数据分离
-  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', '本机数据'];
+  // 目录页签五分类（2026-08-18 第十四/二十轮）：分类头 + 数据库/本机数据/地图框/布局框分离
+  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '本机数据'];
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
     catKeys.every((k) => clientSrc.includes(k)),
     catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');

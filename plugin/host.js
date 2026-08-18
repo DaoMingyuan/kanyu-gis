@@ -195,14 +195,34 @@ return {
       const DB_EXTS = { kdb: 1, kyu: 1 }
       const dbItems = items.filter(i => DB_EXTS[i.ext])
       const dataItems = items.filter(i => !DB_EXTS[i.ext])
+      // 地图框 = 会话工作区渲染产物（output/*.png，render.map 落盘——组件语境
+      // 无壳层运行时地图框，产物即对应物）；布局框 = 扫描到的 .kyu 工程
+      // v2 布局清单（壳层 project.rs layouts 字段，单一事实来源）。
+      const mapItems = []
+      try {
+        const outEntries = await fs.listDir(await fs.resolve(OUT_DIR))
+        for (const e of outEntries) {
+          if (e.type === 'file' && /\.png$/i.test(e.name))
+            mapItems.push({ path: fs.processPath(e.target), name: e.name, size: typeof e.size === 'number' ? e.size : null })
+        }
+      } catch (e) { /* 输出目录尚未存在 */ }
+      const layoutItems = []
+      for (const db of dbItems.slice(0, 50)) {
+        if (db.ext !== 'kyu') continue
+        try {
+          const manifest = JSON.parse(await fs.readText(await fs.resolve(db.path)))
+          for (const l of (manifest && manifest.layouts) || [])
+            layoutItems.push({ title: l.title || '（未命名布局）', from: db.name })
+        } catch (e) { /* 非工程 JSON 跳过 */ }
+      }
       const categories = [
-        { name: '地图框', count: 0, placeholder: '组件语境暂无地图框——地图页签渲染即得' },
-        { name: '布局框', count: 0, placeholder: '组件语境暂无布局框' },
+        { name: '地图框', count: mapItems.length, placeholder: '暂无渲染产物——地图页签渲染后在此列出' },
+        { name: '布局框', count: layoutItems.length, placeholder: '暂无布局——.kyu 工程（v2 起）持久化布局清单后在此列出' },
         { name: '数据库', count: dbItems.length, placeholder: null },
-        { name: '服务链接', count: 0, placeholder: '暂无服务链接（WFS 发现/WMS 底图见壳层 services.rs，组件侧规划中）' },
+        { name: '服务链接', count: 0, placeholder: '暂无服务链接——输入基址点「发现图层」（WFS/WMS，对齐壳层 services.rs）' },
         { name: '本机数据', count: dataItems.length, placeholder: null },
       ]
-      return { ok: true, root, count: items.length, items, dataItems, dbItems, categories }
+      return { ok: true, root, count: items.length, items, dataItems, dbItems, mapItems, layoutItems, categories }
     }
 
     // ------ 能力 2：数据读取（info / query / validate / preview 属性表） ------
