@@ -170,6 +170,10 @@ async function main() {
   // kanyu_edit 撤销栈回执（2026-08-18 第三十三轮）：history 不再被文本工具丢弃
   check('host.js kanyu_edit 回执含撤销栈深度（history 不再被丢弃）',
     hostSrc.includes('撤销栈') && hostSrc.includes('r.history'));
+  // kanyu_catalog 服务链接回执指引（2026-08-18 第三十四轮）：discover 用法指引 + fetch 接力提示 + xml/data 离线直通
+  check('host.js kanyu_catalog 服务链接回执（discover 拉取指引 + fetch 接力提示 + xml/data 参数）',
+    hostSrc.includes('拉取图层：本工具 url + layer=') && hostSrc.includes('接力检视/渲染/编辑')
+      && hostSrc.includes('args.xml') && hostSrc.includes('args.data'));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -222,6 +226,21 @@ async function main() {
   check('services.fetch：离线拉取落盘（FeatureCollection 校验 + 2 要素写出 + 图层名消毒入默认名）',
     fetched.ok && fetched.count === 2 && written === 2,
     'count=' + fetched.count + ' written=' + written);
+  // kanyu_catalog 服务链接分支回执（2026-08-18 第三十四轮）：xml/data 离线直通 + 指引/接力提示
+  const tCatSvc = tools.get('kanyu_catalog');
+  const catDisc = tCatSvc && await tCatSvc.execute({ xml: capsXml });
+  check('动态工具 kanyu_catalog(discover+xml)：图层清单 + 拉取用法指引',
+    typeof catDisc === 'string' && /发现 2 个图层/.test(catDisc) && /demo:buildings/.test(catDisc)
+      && /拉取图层：本工具 url \+ layer=<名称>/.test(catDisc),
+    String(catDisc).slice(0, 120));
+  const catFetchOut = path.join(TMP_DIR, 'kanyu-catalog-fetch.geojson');
+  const catFetch = tCatSvc && await tCatSvc.execute({ layer: 'demo:buildings', data: inlineFc, output: catFetchOut });
+  let catFetchWritten = -1;
+  try { catFetchWritten = JSON.parse(await fsp.readFile(catFetchOut, 'utf8')).features.length; } catch { /* -1 */ }
+  check('动态工具 kanyu_catalog(fetch+data)：计数回执 + 接力提示 + 落盘一致',
+    typeof catFetch === 'string' && /已拉取 2 个要素 → /.test(catFetch)
+      && /可继续作为 kanyu_data\/kanyu_render\/kanyu_edit 的 path 接力/.test(catFetch) && catFetchWritten === 2,
+    String(catFetch).slice(0, 160) + ' written=' + catFetchWritten);
   // 顶点编辑数据源（原样几何不抽稀，两种模式皆覆盖；2026-08-18 第十九轮）
   const egeo = await callRpc('edit.geometry', { path: EXAMPLE, maxFeatures: 200 });
   const eg0 = egeo.ok && egeo.features && egeo.features[0] && egeo.features[0].geometry;

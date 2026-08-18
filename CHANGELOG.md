@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.31.0] — 2026-08-18
+
+- **GIS 模式 AI 面整合：`kanyu_catalog` 服务链接分支回执补操作指引**：
+  discover 回执尾部附「拉取图层：本工具 url + layer=<名称>（WMS 底图加
+  kind=wms）」用法指引——此前模型侧拿到图层清单后不知下一步怎么拉；
+  fetch 回执附「可继续作为 kanyu_data/kanyu_render/kanyu_edit 的 path
+  接力检视/渲染/编辑」产出接力提示（对齐 geoprocess/edit 既有范式）。
+- **工具面补齐 xml/data 离线直通参数**：`servicesDiscover`/`servicesFetch`
+  的离线调试路径（给文本不触网）RPC 早有，动态工具面缺失——补上后服务
+  链接分支首次可离线动态实测（不依赖外部 WFS 服务在线）。
+- **测试器 +3 断言**（hostSrc 静态契约 + discover(xml) 指引动态回执 +
+  fetch(data) 计数/接力提示/落盘一致）；总计 **99/99 全绿**（static
+  76/76——三断言均为离线路径，两种模式皆覆盖）。RPC 表不变仍 25。
+
 ## [0.30.0] — 2026-08-18
 
 - **GIS 模式 AI 面整合：`kanyu_edit` 回执补撤销/重做栈深度**：编辑内核

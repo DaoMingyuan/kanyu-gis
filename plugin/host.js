@@ -872,7 +872,7 @@ return {
 
     textTool({
       name: 'kanyu_catalog',
-      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回五分类计数与路径/类型/大小清单；给出 url 时走服务链接：仅 url 为 WFS GetCapabilities 图层发现，url+layer 为 GetFeature 拉取落 GeoJSON 图层。',
+      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回五分类计数与路径/类型/大小清单；给出 url 时走服务链接：仅 url 为 WFS GetCapabilities 图层发现，url+layer 为 GetFeature 拉取落 GeoJSON 图层；xml/data 为离线调试直通（给文本不触网）。',
       parameters: {
         dir: { type: 'string', description: '起始目录（缺省为会话工作区根）' },
         depth: { type: 'number', description: '递归深度（默认 3）' },
@@ -880,6 +880,8 @@ return {
         layer: { type: 'string', description: '服务图层名（WFS typeNames / WMS layers）' },
         kind: { type: 'string', description: '服务类型：wfs（默认）/ wms（url+layer 时拉 GetMap 底图）' },
         output: { type: 'string', description: 'WFS 拉取输出路径（缺省 output/wfs_<图层>.geojson）' },
+        xml: { type: 'string', description: '离线调试：直接给 GetCapabilities XML 文本（不触网，url 可省）' },
+        data: { type: 'string', description: '离线调试：直接给 GetFeature GeoJSON 文本（不触网，url 可省）' },
       },
       async execute(args) {
         if (args.url && args.layer && args.kind === 'wms') {
@@ -887,16 +889,17 @@ return {
           if (!w.ok) return 'WMS 底图拉取失败: ' + w.error
           return 'WMS 底图 ' + args.layer + ' GetMap 拉取成功：' + w.bytes + ' 字节 PNG（640×320，EPSG:4326；来源：' + w.source + '）'
         }
-        if (args.url && args.layer) {
-          const f = await servicesFetch(args.url, args.layer, args.output)
+        if ((args.url || args.data) && args.layer) {
+          const f = await servicesFetch(args.url, args.layer, args.output, args.data)
           if (!f.ok) return 'WFS 图层拉取失败: ' + f.error
-          return 'WFS 图层 ' + args.layer + ' 已拉取 ' + f.count + ' 个要素 → ' + f.output + '（来源：' + f.source + '）'
+          return 'WFS 图层 ' + args.layer + ' 已拉取 ' + f.count + ' 个要素 → ' + f.output + '（来源：' + f.source + '；可继续作为 kanyu_data/kanyu_render/kanyu_edit 的 path 接力检视/渲染/编辑）'
         }
-        if (args.url) {
-          const d = await servicesDiscover(args.url)
+        if (args.url || args.xml) {
+          const d = await servicesDiscover(args.url, args.xml)
           if (!d.ok) return 'WFS 图层发现失败: ' + d.error
           const lines = d.layers.slice(0, 60).map(l => l.name + (l.title ? '  —— ' + l.title : ''))
           return 'WFS 服务 ' + d.source + ' 发现 ' + d.count + ' 个图层' + (d.count > 60 ? '（前 60 条）' : '') + ':\n' + lines.join('\n')
+            + '\n拉取图层：本工具 url + layer=<名称>（WMS 底图加 kind=wms）'
         }
         const r = await catalogList(args.dir, args.depth)
         if (!r.ok) return '目录扫描失败: ' + r.error
