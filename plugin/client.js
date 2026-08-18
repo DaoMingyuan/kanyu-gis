@@ -148,6 +148,20 @@ function TabCatalog(props) {
     } catch (e) { setSvcMsg('RPC 失败: ' + (e && e.message || e)) }
     setSvcBusy(false)
   }
+  // 布局框：点击布局条目 → render.layout 排版出 SVG 内嵌预览（第四十八轮；
+  // 布局规格 page/dpi/legend/scalebar/north 由 host 读 .kyu 工程清单解析）
+  const [layMsg, setLayMsg] = React.useState('')
+  const [laySvg, setLaySvg] = React.useState(null)
+  const [layBusy, setLayBusy] = React.useState(false)
+  async function previewLayout(it) {
+    setLayBusy(true); setLayMsg('排版「' + it.title + '」…'); setLaySvg(null)
+    try {
+      const r = await host.call('render.layout', { kyu: it.kyu, title: it.title })
+      if (r && r.ok && r.svg) { setLaySvg(r.svg); setLayMsg('布局预览: ' + r.title + ' → ' + r.out) }
+      else setLayMsg('排版失败: ' + (r && (r.error || r.readError) || '未知'))
+    } catch (e) { setLayMsg('RPC 失败: ' + (e && e.message || e)) }
+    setLayBusy(false)
+  }
   function svcSection() {
     return h('div', null,
       h('div', { className: 'kyg-row' },
@@ -170,7 +184,8 @@ function TabCatalog(props) {
     if (cat.name === '数据库') return (data.dbItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
     if (cat.name === '本机数据') return (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
     if (cat.name === '地图框') return (data.mapItems || []).map(it => pick(it, 'PNG', it.name, false))
-    if (cat.name === '布局框') return (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null }))
+    if (cat.name === '布局框') return (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null,
+      onClick: layBusy ? undefined : () => previewLayout(it) }))
     return []
   }
   function catSection(cat) {
@@ -200,6 +215,12 @@ function TabCatalog(props) {
       store.path ? h('span', { className: 'kyg-sel' }, '当前图层: ' + store.path) : null),
     h('div', { className: 'kyg-hint' }, msg),
     data && data.categories && data.categories.map(catSection),
+    layMsg ? h('div', { className: 'kyg-hint' }, layMsg) : null,
+    laySvg ? h('button', { className: 'kyg-btn', onClick: () => { setLaySvg(null); setLayMsg('') } }, '关闭布局预览') : null,
+    // SVG 排版产物内嵌预览（host 侧 render.layout 出图，壳层 layoutview 同源排版器）
+    laySvg ? h('div', { className: 'kyg-layout-preview',
+      style: { overflow: 'auto', maxHeight: '480px', border: '1px solid rgba(127,127,127,0.4)', borderRadius: '4px', marginTop: '6px' },
+      dangerouslySetInnerHTML: { __html: laySvg } }) : null,
   )
 }
 

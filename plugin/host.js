@@ -213,7 +213,7 @@ return {
         try {
           const manifest = JSON.parse(await fs.readText(await fs.resolve(db.path)))
           for (const l of (manifest && manifest.layouts) || [])
-            layoutItems.push({ title: l.title || '（未命名布局）', from: db.name })
+            layoutItems.push({ title: l.title || '（未命名布局）', from: db.name, kyu: db.path })
         } catch (e) { /* 非工程 JSON 跳过 */ }
       }
       const categories = [
@@ -334,6 +334,60 @@ return {
       args.push(q(p))
       const r = await runKanyu(args, 180000)
       return { run: r, out: target }
+    }
+
+    // 布局预览（render.layout RPC，第四十八轮）：两种入参——
+    //   ① path 直传数据文件（标题/页面/开关可选覆盖）；
+    //   ② kyu + title：读 .kyu 工程清单（壳层 project.rs ProjectLayout 规格），
+    //      布局规格 page/dpi/legend/scalebar/north 取自工程，数据取首个可见
+    //      图层 source（相对工程文件所在目录解析）。
+    // 出 SVG 落 dsh/output 并回传文本（客户端内嵌预览）。
+    async function layoutPreview(args) {
+      const a = args || {}
+      let path = a.path
+      let title = a.title
+      let page = a.page
+      let dpi = a.dpi
+      const flags = { theme: a.theme }
+      if (a.legend === false) flags.noLegend = true
+      if (a.scalebar === false) flags.noScalebar = true
+      if (a.north === false) flags.noNorth = true
+      if (!path && a.kyu) {
+        let manifest
+        try {
+          manifest = JSON.parse(await fs.readText(await fs.resolve(await procPath(a.kyu))))
+        } catch (e) { return { ok: false, error: 'kyu 工程读取/解析失败: ' + String(e && e.message || e) } }
+        const layouts = (manifest && manifest.layouts) || []
+        const lay = layouts.find(l => (l.title || '') === (a.title || '')) || layouts[0]
+        if (!lay) return { ok: false, error: '工程无布局清单（layouts 为空）' }
+        if (!title) title = lay.title
+        if (!page) page = lay.page
+        if (!dpi) dpi = lay.dpi
+        if (lay.legend === false) flags.noLegend = true
+        if (lay.scalebar === false) flags.noScalebar = true
+        if (lay.north === false) flags.noNorth = true
+        const first = ((manifest.layers || []).filter(l => l.visible !== false))[0]
+        if (!first || !first.source) return { ok: false, error: '工程无可见图层（layers 为空）' }
+        const src = String(first.source)
+        if (/^([A-Za-z]:[\\/]|\/|\\\\)/.test(src)) path = src
+        else {
+          // 相对路径锚定工程文件所在目录（非工作区根）；
+          // fs.resolve 返回 {displayPath} 对象，须经 processPath 取字符串
+          const kyuAbs = fs.processPath(await fs.resolve(await procPath(a.kyu)))
+          path = kyuAbs.replace(/[\\/][^\\/]+$/, '') + '/' + src.replace(/\\/g, '/')
+        }
+      }
+      if (!path) return { ok: false, error: '缺 path 或 kyu 参数' }
+      await ensureOutDir()
+      const out = OUT_DIR + '\\kanyu-layout-' + Date.now() + '.svg'
+      const r = await renderLayout(path, out, title, page, dpi, flags, a.style)
+      if (!r.run.ok) return { ok: false, error: r.run.stderr.slice(0, 1500), out }
+      try {
+        const svg = await fs.readText(await fs.resolve(out))
+        return { ok: true, out, svg, title: title || '堪舆布局' }
+      } catch (e) {
+        return { ok: true, out, svg: null, readError: String(e && e.message || e) }
+      }
     }
 
     // ------ 能力 3：坐标框架 ------
@@ -860,6 +914,7 @@ return {
     harness.handle('data.preview', async (a) => dataPreview(a && a.path, a && a.limit))
     harness.handle('data.calc', async (a) => dataCalc(a && a.path, a && a.target, a && a.expr, a && a.output))
     harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
+    harness.handle('render.layout', async (a) => layoutPreview(a))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))

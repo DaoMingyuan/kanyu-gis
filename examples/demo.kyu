@@ -1,7 +1,9 @@
 {
   "kanyu_project": 1,
   "name": "组件目录夹具",
-  "layers": [],
+  "layers": [
+    { "id": "buildings", "source": "buildings.geojson", "visible": true, "style": null }
+  ],
   "layouts": [
     { "title": "示例布局A4横", "page": "a4l", "dpi": 150, "scalebar": true, "map": null }
   ]

@@ -1,5 +1,23 @@
 # dsh/ 组件变更记录
 
+## [0.44.0] — 2026-08-18
+
+- **布局预览 UI（目录布局框点击 → 排版预览，第四十八轮）**：host 半新增
+  `render.layout` RPC（RPC 表 26→27）——`layoutPreview` 助手两种入参：
+  path 直传数据文件，或 `kyu + title` 读 .kyu 工程清单（壳层 project.rs
+  ProjectLayout 规格：page/dpi/legend/scalebar/north 取自工程，数据取首个
+  可见图层、source 相对工程文件所在目录解析），经第四十六轮 renderLayout
+  出 SVG 落 dsh/output 并回传文本。catalog.list 布局框条目新增 `kyu`
+  工程路径字段。双端 Client 目录页签布局框条目点击 → 排版 → SVG 内嵌
+  预览（kyg-layout-preview 滚动容器 + 关闭按钮）。两半 RPC 面对称锁随动
+  20=20。**教训入档**：fs.resolve 返回 `{displayPath}` 对象非字符串，
+  取路径须 `fs.processPath()`（首轮测试器实证 `kyuAbs.replace` 报错）。
+- **测试器 +4 断言**（render.layout host 契约键 + catalog kyu 字段 +
+  双端 previewLayout 契约键 + render.layout(kyu) 动态实测——demo.kyu
+  夹具补可见图层 source=buildings.geojson）；总计 **129/129 全绿**
+  （static 100/100）。3080 生产桥实测 render.layout(kyu) 通过
+  （1754×1240 = A4@150dpi 工程规格生效，中文绝对路径无碍）。
+
 ## [0.43.0] — 2026-08-18
 
 - **布局排版出口（壳层 layoutview 移植，第四十六轮）**：主仓新增

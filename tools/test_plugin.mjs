@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（26 个）', rpc.size === 26, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（27 个）', rpc.size === 27, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -187,6 +187,10 @@ async function main() {
   // kanyu_render layout 布局排版（2026-08-18 第四十六轮）：renderLayout 助手契约键
   check('host.js kanyu_render layout 契约键（renderLayout + ensureOutDir 防护 + 排版完成回执）',
     /async function renderLayout[\s\S]*?ensureOutDir\(\)/.test(hostSrc) && hostSrc.includes('排版完成: '));
+  // render.layout RPC（2026-08-18 第四十八轮）：kyu 工程布局规格解析 + SVG 文本回传
+  check('host.js render.layout 契约键（layoutPreview + kyu 清单解析 + svg 回传 + RPC 注册）',
+    /async function layoutPreview[\s\S]*?manifest\.layers/.test(hostSrc)
+      && hostSrc.includes(`harness.handle('render.layout'`) && hostSrc.includes('kyu: db.path'));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -214,9 +218,9 @@ async function main() {
   // 地图框/布局框组件语境对应物（2026-08-18 第二十轮）：渲染产物 + .kyu layouts 清单
   const catCounts = {};
   for (const c of cat.categories || []) catCounts[c.name] = c.count;
-  check('catalog.list：布局框解析 .kyu layouts（demo.kyu 夹具「示例布局A4横」入列）',
+  check('catalog.list：布局框解析 .kyu layouts（demo.kyu 夹具「示例布局A4横」入列 + kyu 工程路径回传）',
     Array.isArray(cat.mapItems) && Array.isArray(cat.layoutItems)
-      && (cat.layoutItems || []).some((l) => l.title === '示例布局A4横')
+      && (cat.layoutItems || []).some((l) => l.title === '示例布局A4横' && typeof l.kyu === 'string' && l.kyu.length > 0)
       && catCounts['布局框'] === (cat.layoutItems || []).length
       && catCounts['地图框'] === (cat.mapItems || []).length,
     'layouts=' + JSON.stringify(cat.layoutItems) + ' maps=' + (cat.mapItems || []).length);
@@ -376,6 +380,13 @@ async function main() {
       typeof layText === 'string' && /排版完成: /.test(layText)
         && laySvg.includes('<svg') && laySvg.includes('示例布局'),
       String(layText).slice(0, 100) + ' svg=' + laySvg.length);
+    // render.layout RPC（2026-08-18 第四十八轮）：kyu 工程模式——布局规格取自
+    // 工程清单（page/dpi/scalebar），数据取首个可见图层（source 相对工程目录解析）
+    const layRpc = await callRpc('render.layout', { kyu: dshPath('examples', 'demo.kyu'), title: '示例布局A4横' });
+    check('render.layout(kyu)：工程布局解析 + SVG 回传（标题入画 + 图层 source 相对工程目录命中）',
+      layRpc.ok && layRpc.svg && layRpc.svg.includes('<svg') && layRpc.svg.includes('示例布局A4横')
+        && layRpc.title === '示例布局A4横',
+      layRpc.ok ? 'svg=' + (layRpc.svg || '').length : String(layRpc.error).slice(0, 120));
   }
 
   // ④ 坐标框架（能力 3）
@@ -646,6 +657,11 @@ async function main() {
   check('client.js 3D 页签联动重载（store.rev 跟随 + auto3dRef 自动重载场景）',
     s3dAutoKeys.every((k) => clientSrc.includes(k)),
     s3dAutoKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 目录布局框点击预览（2026-08-18 第四十八轮）：render.layout + SVG 内嵌 + 关闭按钮
+  const layPvKeys = ['previewLayout', 'render.layout', 'kyg-layout-preview', '关闭布局预览'];
+  check('client.js 目录布局框点击排版预览（previewLayout + render.layout + SVG 内嵌 + 关闭按钮）',
+    layPvKeys.every((k) => clientSrc.includes(k)),
+    layPvKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -719,10 +735,13 @@ async function main() {
   check('pkg/client.js 3D 页签联动重载（与动态半同契约）',
     s3dAutoKeys.every((k) => pkgClientSrc.includes(k)),
     s3dAutoKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 目录布局框点击排版预览（与动态半同契约）',
+    layPvKeys.every((k) => pkgClientSrc.includes(k)),
+    layPvKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 26 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 27 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
   // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
   // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）
