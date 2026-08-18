@@ -234,6 +234,10 @@ async function main() {
   if (!STATIC_ONLY) {
     const info = await callRpc('data.info', { path: EXAMPLE });
     check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
+    // 范围摘要（2026-08-18 第三十二轮）：内核 LayerSummary.extent 经 CLI --json 直通
+    check('data.info：extent 范围摘要（[minx,miny,maxx,maxy] 数值四元组）',
+      info.ok && /"extent":\s*\[\s*-?[\d.]+,\s*-?[\d.]+,\s*-?[\d.]+,\s*-?[\d.]+\s*\]/.test(info.stdout),
+      (info.stdout.match(/"extent":[\s\S]{0,60}/) || ['无 extent'])[0].replace(/\s+/g, ' '));
     const query = await callRpc('data.query', { path: EXAMPLE, filter: 'height > 10' });
     let queryHits = -1;
     try { queryHits = JSON.parse(query.stdout.slice(query.stdout.search(/[{[]/))).features.length; } catch { /* 解析失败即 -1 */ }

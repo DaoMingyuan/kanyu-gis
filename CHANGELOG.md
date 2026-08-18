@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.29.0] — 2026-08-18
+
+- **数据域续：`data.info` 加范围（extent）摘要**（内核层增强，CLI/MCP/
+  组件三面同增益）：主仓 `LayerSummary` 新增 `extent: Option<[f64;4]>`
+  ——`summary()` 在既有 WKB 行走中解码几何累积坐标 bbox（空图层/全空
+  几何为 None）；`kanyu data info` 文本模式加「范围」行、--json 直通；
+  MCP `kanyu_data_load` 同结构自动带出。组件 `data.info` RPC 原样透传
+  即获益，无组件代码改动。CRS 字段不加——内核 Layer 模型不追踪坐标系
+  （reproject 为显式操作），不诚实报告不如不报。
+- **测试器 +1 断言**（data.info extent 数值四元组契约）；总计 **94/94
+  全绿**（static 71/71）。cargo test --workspace 全绿、clippy -D
+  warnings 通过、本机 CLI 已 cargo install 更新。
+
 ## [0.28.0] — 2026-08-18
 
 - **GIS 模式 AI 面整合：`kanyu_geoprocess` 双分支产出回执**：精选白名单与
