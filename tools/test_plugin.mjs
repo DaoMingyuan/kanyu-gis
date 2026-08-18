@@ -158,6 +158,9 @@ async function main() {
   // toolbox.run 同款防护（2026-08-18 第二十八轮）：tool run --output 单产出同路径写出
   check('host.js toolboxRun 落盘前 ensureOutDir（tool run --output 同款防护）',
     /async function toolboxRun[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
+  // kanyu_data query 落盘分支（2026-08-18 第二十九轮）：模型侧确认文本非空串
+  check('host.js kanyu_data query 落盘分支含命中确认文本（对齐客户端 runQuery 语义）',
+    /查询完成：命中/.test(hostSrc));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -250,6 +253,16 @@ async function main() {
   const prevText = tData && await tData.execute({ action: 'preview', path: EXAMPLE });
   check('动态工具 kanyu_data(preview)：属性表文本（字段头 + 行）',
     typeof prevText === 'string' && /字段\(/.test(prevText) && /height/.test(prevText));
+  // kanyu_data query 落盘分支（2026-08-18 第二十九轮，CLI 依赖）：模型侧确认文本 + 文件一致
+  if (!STATIC_ONLY) {
+    const kdOut = path.join(TMP_DIR, 'kanyu-data-query.geojson');
+    const kdText = tData && await tData.execute({ action: 'query', path: EXAMPLE, filter: 'height > 10', output: kdOut });
+    let kdWritten = -1;
+    try { kdWritten = JSON.parse(await fsp.readFile(kdOut, 'utf8')).features.length; } catch { /* 解析失败即 -1 */ }
+    check('动态工具 kanyu_data(query+output)：命中计数确认文本 + 落盘文件要素一致（非空串）',
+      typeof kdText === 'string' && /查询完成：命中 \d+ 要素 → 已写出: /.test(kdText) && kdWritten > 0,
+      String(kdText).slice(0, 100) + ' written=' + kdWritten);
+  }
 
   // ③ 地图面板（能力 1，CLI 依赖）
   if (!STATIC_ONLY) {

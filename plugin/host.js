@@ -908,12 +908,12 @@ return {
 
     textTool({
       name: 'kanyu_data',
-      description: '读取 GIS 数据：action=info 检视（格式/要素数/字段清单）、query 属性查询（filter 如 "height > 50"）、validate 宗地 TXT 质检、preview 属性表预览（字段并集 + 前 N 行，纯读面不经 CLI）。',
+      description: '读取 GIS 数据：action=info 检视（格式/要素数/字段清单）、query 属性查询（filter 如 "height > 50"；带 output 则结果落盘 GeoJSON 并返回命中计数确认，产出可继续作为 path 传给本工具/kanyu_render/kanyu_edit）、validate 宗地 TXT 质检、preview 属性表预览（字段并集 + 前 N 行，纯读面不经 CLI）。',
       parameters: {
         action: { type: 'string', required: true, description: 'info | query | validate | preview' },
         path: { type: 'string', required: true, description: '数据文件路径' },
         filter: { type: 'string', description: 'query 时的过滤表达式："field op value"，op ∈ == != > >= < <=' },
-        output: { type: 'string', description: 'query 结果输出路径（GeoJSON，可选）' },
+        output: { type: 'string', description: 'query 结果输出路径（GeoJSON，可选；给出则落盘并回执命中数，缺省打印结果）' },
         limit: { type: 'number', description: 'preview 时的行数上限（默认 50，最大 200）' },
       },
       async execute(args) {
@@ -927,6 +927,13 @@ return {
         const r = args.action === 'query' ? await dataQuery(args.path, args.filter || '', args.output)
           : args.action === 'validate' ? await dataValidate(args.path)
           : await dataInfo(args.path)
+        // query 落盘分支：stdout 为空，命中数在 stderr「已写出 N 个要素 → path」，
+        // 模型侧须拿到确认文本而非空串（对齐客户端 runQuery 语义）
+        if (args.action === 'query' && args.output && r.ok) {
+          const m = /已写出 (\d+) 个要素 → (.+)/.exec(r.stderr || '')
+          return m ? '查询完成：命中 ' + m[1] + ' 要素 → 已写出: ' + m[2].trim() + '（可继续作为 path 检视/渲染/编辑）'
+            : '查询完成 → 已写出: ' + args.output
+        }
         const j = parseJsonLoose(r.stdout)
         if (j) return JSON.stringify(j).slice(0, 6000)
         return r.ok ? r.stdout.slice(0, 6000) : '失败(exit ' + r.exitCode + '): ' + r.stderr.slice(0, 2000)
