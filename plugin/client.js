@@ -1449,14 +1449,26 @@ function Tab3d(props) {
   // 视角状态（对齐内核 Scene3D：yaw 弧度 / pitch 角度制，拖拽调节）
   const [view, setView] = React.useState({ yaw: -0.5, pitch: 35 })
   // 视角书签 + PNG 导出（2026-08-19 第七十二轮）：书签存当前 yaw/pitch 点击恢复；
-  // 导出取画布 toDataURL 触发浏览器下载
+  // 导出取画布 toDataURL 触发浏览器下载。
+  // 书签持久化（2026-08-19 第七十三轮）：localStorage 按图层路径键控
+  // （kanyu-3d-views:<path>），跨会话留存 + 逐条删除
   const [views, setViews] = React.useState([])
   const [viewName, setViewName] = React.useState('')
+  const viewsKey = 'kanyu-3d-views:' + path
+  React.useEffect(() => {
+    try { setViews(JSON.parse(localStorage.getItem(viewsKey) || '[]')) }
+    catch { setViews([]) }
+  }, [viewsKey])
+  function persistViews(next) {
+    setViews(next)
+    try { localStorage.setItem(viewsKey, JSON.stringify(next)) } catch { /* 容量满静默 */ }
+  }
   function saveView() {
     const name = viewName.trim() || ('视角 ' + (views.length + 1))
-    setViews(vs => vs.concat([{ name, yaw: view.yaw, pitch: view.pitch }]))
+    persistViews(views.concat([{ name, yaw: view.yaw, pitch: view.pitch }]))
     setViewName('')
   }
+  function delView(i) { persistViews(views.filter((_, j) => j !== i)) }
   function exportPng() {
     if (!cv) { setMsg('画布未就绪'); return }
     const a = document.createElement('a')
@@ -1531,9 +1543,12 @@ function Tab3d(props) {
       h('button', { className: 'kyg-btn kyg-btn-sub', onClick: saveView }, '存视角书签'),
       h('button', { className: 'kyg-btn kyg-btn-sub', disabled: !data, onClick: exportPng }, '导出 PNG')),
     views.length ? h('div', { className: 'kyg-row', style: { flexWrap: 'wrap' } },
-      views.map((v, i) => h('button', { key: i, className: 'kyg-btn kyg-btn-sub',
-        title: 'yaw ' + v.yaw.toFixed(2) + ' / pitch ' + v.pitch + '°',
-        onClick: () => setView({ yaw: v.yaw, pitch: v.pitch }) }, '⌖ ' + v.name))) : null,
+      views.map((v, i) => h('span', { key: i, style: { marginRight: '6px' } },
+        h('button', { className: 'kyg-btn kyg-btn-sub',
+          title: 'yaw ' + v.yaw.toFixed(2) + ' / pitch ' + v.pitch + '°',
+          onClick: () => setView({ yaw: v.yaw, pitch: v.pitch }) }, '⌖ ' + v.name),
+        h('button', { className: 'kyg-btn kyg-btn-sub', title: '删除书签',
+          onClick: () => delView(i) }, '×')))) : null,
     // 类别图例（模型色 catColors 优先，缺省 catColor 哈希色，色块与棱柱同色）
     data && data.categories ? h('div', { className: 'kyg-row', style: { flexWrap: 'wrap' } },
       data.categories.map(c => h('span', { key: c, className: 'kyg-hint', style: { marginRight: '10px' } },

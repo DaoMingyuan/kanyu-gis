@@ -986,6 +986,11 @@ async function main() {
   check('client.js 3D 视角书签 + PNG 导出（saveView 书签恢复 + toDataURL 下载）',
     s3dViewKeys.every((k) => clientSrc.includes(k)),
     s3dViewKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 3D 书签持久化（2026-08-19 第七十三轮）：localStorage 按图层键控 + 删除
+  const s3dPersistKeys = ['kanyu-3d-views:', 'localStorage', 'persistViews', 'delView'];
+  check('client.js 3D 书签持久化（localStorage 按图层键控 kanyu-3d-views: + delView 删除）',
+    s3dPersistKeys.every((k) => clientSrc.includes(k)),
+    s3dPersistKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 地图面板符号化（2026-08-18 第十二轮起步 / 第五十二轮升级为 LayerSymbology
   // 编辑模型）：buildSymbology 构建 single/categorical/graduated + symToForm 回填
   const symKeys = ['buildSymbology', 'symToForm', 'single', 'graduated', 'categorical', '符号化'];
@@ -1152,6 +1157,9 @@ async function main() {
   check('pkg/client.js 3D 视角书签 + PNG 导出（与动态半同契约）',
     s3dViewKeys.every((k) => pkgClientSrc.includes(k)),
     s3dViewKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 3D 书签持久化（与动态半同契约）',
+    s3dPersistKeys.every((k) => pkgClientSrc.includes(k)),
+    s3dPersistKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 地图页签符号化控件（与动态半同契约）',
     symKeys.every((k) => pkgClientSrc.includes(k)),
     symKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
