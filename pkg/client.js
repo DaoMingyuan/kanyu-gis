@@ -1467,6 +1467,23 @@ window.__ModuleLoader__.load({
       const [cv, setCv] = React.useState(null)
       // 视角状态（对齐内核 Scene3D：yaw 弧度 / pitch 角度制，拖拽调节）
       const [view, setView] = React.useState({ yaw: -0.5, pitch: 35 })
+      // 视角书签 + PNG 导出（2026-08-19 第七十二轮）：书签存当前 yaw/pitch 点击恢复；
+      // 导出取画布 toDataURL 触发浏览器下载
+      const [views, setViews] = React.useState([])
+      const [viewName, setViewName] = React.useState('')
+      function saveView() {
+        const name = viewName.trim() || ('视角 ' + (views.length + 1))
+        setViews(vs => vs.concat([{ name, yaw: view.yaw, pitch: view.pitch }]))
+        setViewName('')
+      }
+      function exportPng() {
+        if (!cv) { setMsg('画布未就绪'); return }
+        const a = document.createElement('a')
+        a.href = cv.toDataURL('image/png')
+        a.download = 'kanyu-scene3d-' + Date.now() + '.png'
+        a.click()
+        setMsg('已导出 PNG（浏览器下载）: ' + a.download)
+      }
       const dragRef = React.useRef(null)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
       React.useEffect(() => { if (cv && data) drawScene3d(cv, data, view) }, [cv, data, view])
@@ -1527,6 +1544,15 @@ window.__ModuleLoader__.load({
           style: { cursor: 'grab', touchAction: 'none' },
           onMouseDown: onDown, onMouseMove: onMove, onMouseUp: onUp, onMouseLeave: onUp,
         }),
+        h('div', { className: 'kyg-row' },
+          h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => setView({ yaw: -0.5, pitch: 35 }) }, '复位视角'),
+          h('input', { className: 'kyg-input', style: { maxWidth: '22%' }, value: viewName, placeholder: '书签名称（可选）', onChange: e => setViewName(e.target.value) }),
+          h('button', { className: 'kyg-btn kyg-btn-sub', onClick: saveView }, '存视角书签'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: !data, onClick: exportPng }, '导出 PNG')),
+        views.length ? h('div', { className: 'kyg-row', style: { flexWrap: 'wrap' } },
+          views.map((v, i) => h('button', { key: i, className: 'kyg-btn kyg-btn-sub',
+            title: 'yaw ' + v.yaw.toFixed(2) + ' / pitch ' + v.pitch + '°',
+            onClick: () => setView({ yaw: v.yaw, pitch: v.pitch }) }, '⌖ ' + v.name))) : null,
         // 类别图例（模型色 catColors 优先，缺省 catColor 哈希色，色块与棱柱同色）
         data && data.categories ? h('div', { className: 'kyg-row', style: { flexWrap: 'wrap' } },
           data.categories.map(c => h('span', { key: c, className: 'kyg-hint', style: { marginRight: '10px' } },
@@ -1541,7 +1567,7 @@ window.__ModuleLoader__.load({
       const [info, setInfo] = React.useState(null)
       React.useEffect(() => { hostCall('ping', {}).then(setInfo).catch(e => setInfo({ error: String(e && e.message || e) })) }, [])
       return h('div', null,
-        h('div', { className: 'kyg-hint' }, '堪舆 GIS × DeepSeek Harness 组件 —— 七大能力域经 kanyu CLI 内核驱动；模型侧能力由 8 个 kanyu_* 工具承接（Harness function-calling）；面板随 kanyu-gis preset 联动显示。'),
+        h('div', { className: 'kyg-hint' }, '堪舆 GIS × DeepSeek Harness 组件 —— 七大能力域经 kanyu CLI 内核驱动；模型侧能力由 9 个 kanyu_* 工具承接（Harness function-calling）；面板随 kanyu-gis preset 联动显示。'),
         info ? h(ResultPre, { text: fmtJson(info, 3000) }) : h('div', { className: 'kyg-hint' }, '连接中…'),
       )
     }

@@ -1,5 +1,14 @@
 # dsh/ 组件变更记录
 
+## [0.68.0] — 2026-08-19
+
+- **3D 页签视角书签 + PNG 导出（第七十二轮）**：双端 client.js TabScene3d
+  新增视角书签（存当前 yaw/pitch → 具名按钮点击恢复 + 复位视角）与
+  PNG 场景导出（画布 `toDataURL` 触发浏览器下载，文件名
+  `kanyu-scene3d-<ts>.png`）；TabAbout/README/agent.cordis.yml 工具计数
+  「8 个 kanyu_*」漂移修正为 9。
+- 测试器 207→**209** / static 158→**160**（+2 双端 3D 书签契约键）。
+
 ## [0.67.0] — 2026-08-19
 
 - **融合 WASM 技能（第七十一轮，技能沙箱第四算子）**：新 guest crate

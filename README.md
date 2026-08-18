@@ -52,7 +52,7 @@
 | 路线 | 机制 | 生命周期 |
 |------|------|----------|
 | 动态包（Web 工作台 + 8 工具） | 会话内 `cordis_define`（host.js + client.js）→ `cordis_run` | 进程内存态，重启不恢复（宿主设计如此） |
-| **常驻静态插件（8 工具 + GIS 工作台面板）** | `dsh/pkg/` 双面包适配器包装 host.js 单一事实源，经 `dsh plugin --profile web add file:<仓库>/dsh/pkg` + profile `cordis.patch.yml` insert 行安装 | 常驻，随 DSH 启动自动激活（2026-08-18 实测：启动日志「8 个 kanyu_* 工具注册进工具注册表」+ boot 图含 `kanyu-gis-dsh-plugin` 客户端条目，切到 kanyu-gis preset 会话即见「🧭 堪舆GIS」头部按钮） |
+| **常驻静态插件（9 工具 + GIS 工作台面板）** | `dsh/pkg/` 双面包适配器包装 host.js 单一事实源，经 `dsh plugin --profile web add file:<仓库>/dsh/pkg` + profile `cordis.patch.yml` insert 行安装 | 常驻，随 DSH 启动自动激活（启动日志「9 个 kanyu_* 工具注册进工具注册表」+ boot 图含 `kanyu-gis-dsh-plugin` 客户端条目，切到 kanyu-gis preset 会话即见「🧭 堪舆GIS」头部按钮） |
 
 ```bash
 # 每次 dsh/ 更新完成后，一键本地同步（preset 回灌 + 插件重装）：

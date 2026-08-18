@@ -105,7 +105,7 @@
 # ── MCP 桥（堪舆内核 AI 意图面整合） ─────────────────────────────────────────
 
 # kanyu-mcp（crates/kanyu-mcp，17 stable 工具）经 dsh-mcp-client 桥接入会话：
-# 模型可见 mcp__kanyu__* 工具（server 限定名，与组件 8 个 kanyu_* 动态工具
+# 模型可见 mcp__kanyu__* 工具（server 限定名，与组件 9 个 kanyu_* 动态工具
 # 互补——动态工具走 PATH 上的 kanyu CLI，MCP 桥走 stdio 长驻子进程）。
 # 每会话一个插件实例；failOnStartupError 默认 false，kanyu.exe 不在 PATH 时
 # 会话仍可加载（工具缺席但不 broken）。

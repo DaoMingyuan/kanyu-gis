@@ -981,6 +981,11 @@ async function main() {
   check('client.js 3D 页签符号化行（模型色 f.color + catColors 图例优先）',
     s3dSymKeys.every((k) => clientSrc.includes(k)),
     s3dSymKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 3D 视角书签 + PNG 导出（2026-08-19 第七十二轮）：saveView/exportPng + 复位
+  const s3dViewKeys = ['saveView', 'exportPng', 'toDataURL', '复位视角', '存视角书签', 'kanyu-scene3d-'];
+  check('client.js 3D 视角书签 + PNG 导出（saveView 书签恢复 + toDataURL 下载）',
+    s3dViewKeys.every((k) => clientSrc.includes(k)),
+    s3dViewKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 地图面板符号化（2026-08-18 第十二轮起步 / 第五十二轮升级为 LayerSymbology
   // 编辑模型）：buildSymbology 构建 single/categorical/graduated + symToForm 回填
   const symKeys = ['buildSymbology', 'symToForm', 'single', 'graduated', 'categorical', '符号化'];
@@ -1144,6 +1149,9 @@ async function main() {
   check('pkg/client.js 3D 页签符号化行（与动态半同契约）',
     s3dSymKeys.every((k) => pkgClientSrc.includes(k)),
     s3dSymKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 3D 视角书签 + PNG 导出（与动态半同契约）',
+    s3dViewKeys.every((k) => pkgClientSrc.includes(k)),
+    s3dViewKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 地图页签符号化控件（与动态半同契约）',
     symKeys.every((k) => pkgClientSrc.includes(k)),
     symKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
