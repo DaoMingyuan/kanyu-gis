@@ -886,6 +886,11 @@ async function main() {
   check('client.js 编辑页签字段计算器区（calcPreview/calcApply + 前 5 行预览 + 应用确认回执）',
     editCalcKeys.every((k) => clientSrc.includes(k)),
     editCalcKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 编辑页签算子清单同步（2026-08-18 第六十一轮）：OPS/HINTS 入列五件新算子 + 容量 100 提示
+  const editOpsKeys = ["'attributes-replace'", "'feature-move'", "'hole-add'", "'line-split'", "'topo-move'", '容量 100', '算子清单与 EDIT_OPS'];
+  check('client.js 编辑页签算子清单同步（OPS 11 算子入列 + HINTS 示例 + 容量 100 提示）',
+    editOpsKeys.every((k) => clientSrc.includes(k)),
+    editOpsKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -994,6 +999,9 @@ async function main() {
   check('pkg/client.js 编辑页签字段计算器区（与动态半同契约）',
     editCalcKeys.every((k) => pkgClientSrc.includes(k)),
     editCalcKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 编辑页签算子清单同步（与动态半同契约）',
+    editOpsKeys.every((k) => pkgClientSrc.includes(k)),
+    editOpsKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

@@ -809,13 +809,19 @@ window.__ModuleLoader__.load({
       const [out, setOut] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
-      const OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'vertex-move']
+      // 算子清单与 EDIT_OPS（host.js）保持一致——新增算子须双端同步入列
+      const OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add', 'line-split', 'topo-move']
       const HINTS = {
         'feature-count': '{}', 'feature-delete': '{"index":0}',
         'feature-add': '{"geometry":{"type":"Point","coordinates":[113.6,34.8]},"properties":{"name":"新点","height":20}}',
         'attribute-set': '{"index":-1,"field":"height","value":30}（index=-1 为全部要素）',
         'attribute-delete': '{"field":"temp"}',
-        'vertex-move': '{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}',
+        'attributes-replace': '{"index":0,"properties":{"name":"改"}}（整行覆写，null 清空属性表）',
+        'vertex-move': '{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}（ringPath 缺省按类型分派：面[0]/多面与多线[0,0]/线与点[]，保留 Z/M）',
+        'feature-move': '{"index":0,"dx":100,"dy":50}（整要素平移，保留 Z/M）',
+        'hole-add': '{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}（面内挖洞，自动闭合；part 多面子面下标）',
+        'line-split': '{"index":0,"x":2.5,"y":4}（线按点打断，投影最近线段吸附顶点）',
+        'topo-move': '{"x":5,"y":0,"nx":6,"ny":1}（共享顶点一次同移，坐标精确匹配）',
       }
       async function apply2() {
         let args
@@ -986,7 +992,7 @@ window.__ModuleLoader__.load({
           h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: apply2 }, '应用'),
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => undoRedo('undo') }, '撤销'),
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => undoRedo('redo') }, '重做')),
-        h('div', { className: 'kyg-hint' }, '编辑历史对齐 kanyu-edit 双栈：变更入 undo 栈（容量 64），新变更清空 redo'),
+        h('div', { className: 'kyg-hint' }, '编辑历史对齐 kanyu-edit 双栈：变更入 undo 栈（容量 100），新变更清空 redo'),
         h('div', { className: 'kyg-hint' }, '—— 属性单元格编辑 ——'),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: loadAttrs }, '加载属性表'),
