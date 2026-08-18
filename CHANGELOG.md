@@ -1,5 +1,17 @@
 # dsh/ 组件变更记录
 
+## [0.7.1] — 2026-08-18
+
+- **修复「组件界面未正确加载」（用户报告）**：根因为运行中的 `dsh web`（3080）
+  实例过期——组合树与客户端 boot 图在启动时一次成型、不热加载，插件重装后
+  旧实例 boot 图无 kanyu 条目、bundle 404、/kanyu-gis/health 落 SPA 兜底页。
+  重启实例即恢复（health 200：8 工具/17 RPC，boot 图含 `immediately: true`
+  条目，bundle 200 含最新 3D 管线）。
+- **`sync-local.sh` 一键本地同步脚本**（用户指令「每次更新完成，本地要同步更新」
+  落地）：preset 回灌 + 旁路校验 + web profile 静态插件 remove/add 重装
+  （pnpm file: 副本刷新）一步完成，脚本实证通过；README 安装节与
+  docs/GIS_MODE.md §5 维护契约同步改写。
+
 ## [0.7.0] — 2026-08-18
 
 - **3D 能力对齐内核 scene3d.rs 软件管线**：双客户端（plugin/client.js 动态形态 +

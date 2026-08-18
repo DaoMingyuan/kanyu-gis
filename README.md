@@ -14,6 +14,7 @@
 | `examples/` | 组件演示数据（GeoJSON 小样例） |
 | `tools/verify_preset.mjs` | preset 可加载性旁路校验（与 DSH 发现库同判定链）；用法：`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets` |
 | `sync-preset.sh` | 把仓库内 preset 源同步到本机 DSH 安装区（`~/.dsh/.agent-presets/kanyu-gis/`）并触发校验 |
+| `sync-local.sh` | **一键本地同步（每次更新后必跑）**：preset 回灌 + 校验 + web profile 静态插件重装（pnpm file: 副本刷新）；运行中的 `dsh web` 实例须重启方生效（组合树/boot 图启动时一次成型，不热加载） |
 
 ## 七大能力域 → kanyu 内核落点
 
@@ -39,10 +40,14 @@
 | **常驻静态插件（8 工具 + GIS 工作台面板）** | `dsh/pkg/` 双面包适配器包装 host.js 单一事实源，经 `dsh plugin --profile web add file:<仓库>/dsh/pkg` + profile `cordis.patch.yml` insert 行安装 | 常驻，随 DSH 启动自动激活（2026-08-18 实测：启动日志「8 个 kanyu_* 工具注册进工具注册表」+ boot 图含 `kanyu-gis-dsh-plugin` 客户端条目，切到 kanyu-gis preset 会话即见「🧭 堪舆GIS」头部按钮） |
 
 ```bash
-# 仓库 → 本机 DSH 安装区（preset 同步 + 校验）
+# 每次 dsh/ 更新完成后，一键本地同步（preset 回灌 + 插件重装）：
+bash dsh/sync-local.sh
+# 运行中的 dsh web 实例须重启，组合树/客户端 boot 图刷新生效
+
+# 或分步：仓库 → 本机 DSH 安装区（preset 同步 + 校验）
 bash dsh/sync-preset.sh
 
-# 常驻静态插件安装（一次性；更新 host.js 后需重装以刷新 profile 副本）：
+# 常驻静态插件安装（一次性；更新 host.js/pkg 后需重装以刷新 profile 副本）：
 dsh plugin --profile web remove kanyu-gis-dsh-plugin
 dsh plugin --profile web add "file:<仓库绝对路径>/dsh/pkg"
 # cordis.patch.yml 需含 insert 行（含 config.hostSource 指向 host.js 绝对路径），
