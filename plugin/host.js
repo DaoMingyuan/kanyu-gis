@@ -882,12 +882,17 @@ return {
         output: { type: 'string', description: 'WFS 拉取输出路径（缺省 output/wfs_<图层>.geojson）' },
         xml: { type: 'string', description: '离线调试：直接给 GetCapabilities XML 文本（不触网，url 可省）' },
         data: { type: 'string', description: '离线调试：直接给 GetFeature GeoJSON 文本（不触网，url 可省）' },
+        bbox: { type: 'array', items: { type: 'number' }, description: 'WMS 底图范围 [minx,miny,maxx,maxy]（缺省全球；可据 kanyu_data info 的 extent 给真实范围）' },
+        width: { type: 'number', description: 'WMS 底图宽像素（默认 640）' },
+        height: { type: 'number', description: 'WMS 底图高像素（默认 320）' },
+        urlOnly: { type: 'boolean', description: 'WMS 只构造 GetMap 地址不拉取（离线契约路径）' },
       },
       async execute(args) {
         if (args.url && args.layer && args.kind === 'wms') {
-          const w = await servicesWms(args.url, args.layer, null, 640, 320, false)
+          const w = await servicesWms(args.url, args.layer, args.bbox, args.width, args.height, !!args.urlOnly)
           if (!w.ok) return 'WMS 底图拉取失败: ' + w.error
-          return 'WMS 底图 ' + args.layer + ' GetMap 拉取成功：' + w.bytes + ' 字节 PNG（640×320，EPSG:4326；来源：' + w.source + '）'
+          if (args.urlOnly) return 'WMS GetMap 地址（' + args.layer + '，仅构造未拉取）：' + w.source
+          return 'WMS 底图 ' + args.layer + ' GetMap 拉取成功：' + w.bytes + ' 字节 PNG（' + (args.width || 640) + '×' + (args.height || 320) + '，EPSG:4326；来源：' + w.source + '；内联预览在工作台目录页签服务链接区）'
         }
         if ((args.url || args.data) && args.layer) {
           const f = await servicesFetch(args.url, args.layer, args.output, args.data)

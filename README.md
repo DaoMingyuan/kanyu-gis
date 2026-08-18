@@ -21,7 +21,7 @@
 | 能力 | 组件工具 | kanyu 侧对应物 |
 |------|----------|----------------|
 | 地图面板 | `kanyu_render` | `kanyu render map`（晨山/夜观星，PNG/SVG） |
-| GIS 数据目录读取 | `kanyu_catalog` / `kanyu_data` | 五分类工程目录（壳层 catalog.rs 范式：地图框=渲染产物 / 布局框=.kyu layouts / 数据库=.kdb/.kyu / 服务链接=WFS+WMS / 本机数据）+ `kanyu data info（含 extent 范围摘要）/query/validate` + `data.preview` 属性表（纯 fs）+ 查询联动（过滤落盘 dsh/output + 命中 N/M 计数 + 设为当前图层；模型侧 query+output 同语义回执）+ 服务链接分支（discover 附拉取指引 / fetch 附接力提示，xml/data 离线直通）+ 格式注册表 |
+| GIS 数据目录读取 | `kanyu_catalog` / `kanyu_data` | 五分类工程目录（壳层 catalog.rs 范式：地图框=渲染产物 / 布局框=.kyu layouts / 数据库=.kdb/.kyu / 服务链接=WFS+WMS / 本机数据）+ `kanyu data info（含 extent 范围摘要）/query/validate` + `data.preview` 属性表（纯 fs）+ 查询联动（过滤落盘 dsh/output + 命中 N/M 计数 + 设为当前图层；模型侧 query+output 同语义回执）+ 服务链接分支（discover 附拉取指引 / fetch 附接力提示 / wms 附 bbox 宽高直通+urlOnly，xml/data 离线直通）+ 格式注册表 |
 | 坐标框架 | `kanyu_crs` | `kanyu crs search/info`（EPSG 全库 7507 条检索/检视）+ `kanyu data reproject`（投影变换落盘 dsh/output + 设为当前图层联动；模型侧 reproject+output 计数回执） |
 | 工程目录 | Client 目录页签 | `catalog.list` RPC（扩展名矩阵对齐 `format.rs`） |
 | 地理处理 | `kanyu_geoprocess` | `kanyu analysis <13 工具>`（QGIS 语义，精选白名单）+ `kanyu tool list/run`（tooldef 37 工具注册表全库，与壳层工具箱/MCP 同一事实来源）；双端处理页签 ToolboxPanel 全库表单（五分类分组 + ParamKind 动态表单 + 产图层工具缺省落盘 dsh/output 并设为当前图层联动）；模型侧双分支产出回执（stderr 写出清单） |

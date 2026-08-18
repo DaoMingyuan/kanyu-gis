@@ -174,6 +174,10 @@ async function main() {
   check('host.js kanyu_catalog 服务链接回执（discover 拉取指引 + fetch 接力提示 + xml/data 参数）',
     hostSrc.includes('拉取图层：本工具 url + layer=') && hostSrc.includes('接力检视/渲染/编辑')
       && hostSrc.includes('args.xml') && hostSrc.includes('args.data'));
+  // kanyu_catalog WMS 参数面（2026-08-18 第三十六轮）：bbox/宽高直通 + urlOnly 离线契约
+  check('host.js kanyu_catalog WMS 分支参数面（bbox/width/height 直通 + urlOnly）',
+    hostSrc.includes('args.bbox') && hostSrc.includes('args.urlOnly')
+      && hostSrc.includes('仅构造未拉取'));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -241,6 +245,14 @@ async function main() {
     typeof catFetch === 'string' && /已拉取 2 个要素 → /.test(catFetch)
       && /可继续作为 kanyu_data\/kanyu_render\/kanyu_edit 的 path 接力/.test(catFetch) && catFetchWritten === 2,
     String(catFetch).slice(0, 160) + ' written=' + catFetchWritten);
+  // WMS 参数面（2026-08-18 第三十六轮）：bbox/宽高直通 + urlOnly 离线契约（两种模式皆覆盖，不触网）
+  const catWms = tCatSvc && await tCatSvc.execute({ url: 'https://example.com/wms', layer: 'demo:dem', kind: 'wms',
+    bbox: [116.39, 39.9, 116.41, 39.92], width: 800, height: 600, urlOnly: true });
+  check('动态工具 kanyu_catalog(wms+urlOnly)：GetMap 地址构造（bbox 六位小数 + 宽高直通，不触网）',
+    typeof catWms === 'string' && /仅构造未拉取/.test(catWms)
+      && /bbox=116\.390000,39\.900000,116\.410000,39\.920000/.test(catWms)
+      && /width=800&height=600/.test(catWms),
+    String(catWms).slice(0, 200));
   // 顶点编辑数据源（原样几何不抽稀，两种模式皆覆盖；2026-08-18 第十九轮）
   const egeo = await callRpc('edit.geometry', { path: EXAMPLE, maxFeatures: 200 });
   const eg0 = egeo.ok && egeo.features && egeo.features[0] && egeo.features[0].geometry;
