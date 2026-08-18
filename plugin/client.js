@@ -125,6 +125,16 @@ function TabCatalog(props) {
     } catch (e) { setSvcMsg('RPC 失败: ' + (e && e.message || e)) }
     setSvcBusy(false)
   }
+  // WFS GetFeature 拉取落 GeoJSON 图层（services.fetch），成功即设为当前图层
+  async function fetchLayer(layerName) {
+    setSvcBusy(true); setSvcMsg('拉取 ' + layerName + '…')
+    try {
+      const r = await host.call('services.fetch', { url: svcUrl, layer: layerName })
+      if (r && r.ok) { setSvcMsg('已拉取 ' + r.count + ' 个要素 → ' + r.output); store.path = r.output; props.notify() }
+      else setSvcMsg('拉取失败: ' + (r && r.error || '未知'))
+    } catch (e) { setSvcMsg('RPC 失败: ' + (e && e.message || e)) }
+    setSvcBusy(false)
+  }
   function svcSection() {
     return h('div', null,
       h('div', { className: 'kyg-row' },
@@ -133,7 +143,8 @@ function TabCatalog(props) {
       svcMsg ? h('div', { className: 'kyg-hint' }, svcMsg) : null,
       svcLayers ? svcLayers.map((l, i) => h('div', { key: i, className: 'kyg-list-item' },
         h('span', { className: 'ext' }, 'WFS'),
-        h('span', null, l.name + (l.title ? ' —— ' + l.title : ''))))
+        h('span', null, l.name + (l.title ? ' —— ' + l.title : '')),
+        h('button', { className: 'kyg-btn', style: { marginLeft: 'auto', padding: '1px 8px', fontSize: '11px' }, disabled: svcBusy, onClick: () => fetchLayer(l.name) }, '拉取')))
         : h('div', { className: 'kyg-hint' }, '暂无服务链接——输入基址点「发现图层」'))
   }
   function catSection(cat) {

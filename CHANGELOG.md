@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.13.0] — 2026-08-18
+
+- **WFS GetFeature 拉取落 GeoJSON 图层（壳层 services.rs v1 语义）**：新增
+  `services.fetch` RPC（RPC 表 19→**20**）——`buildGetFeatureUrl`/`joinQuery`
+  移植壳层同名纯函数（基址去尾 `?`/`&` 补分隔符、typeNames 原样拼接、
+  `outputFormat=application/json`）；URL 路径 10s 超时；`data` 参数为离线
+  路径（测试不触网）；响应校验 FeatureCollection 根，输出缺省
+  `output/wfs_<图层名消毒>.geojson`。`kanyu_catalog` 动态工具加
+  `url+layer` 拉取分支。
+- **双客户端目录页签图层行「拉取」按钮**：服务链接发现清单每行可直接
+  GetFeature 拉取，成功即设为当前图层（store.path 联动）。
+- **测试器 +1 断言**（离线拉取落盘：FeatureCollection 校验 + 2 要素写出），
+  RPC 计数断言 19→20；总计 **55/55 全绿**（static 44/44）。3080 桥实测：
+  离线拉取落 `output/wfs_demo_test.geojson`、计数正确。
+
 ## [0.12.0] — 2026-08-18
 
 - **服务链接：WFS GetCapabilities 图层发现（对齐壳层 services.rs）**：新增

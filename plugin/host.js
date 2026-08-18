@@ -582,6 +582,57 @@ return {
       }
     }
 
+    // buildGetFeatureUrl 对齐壳层 services.rs：join_query（基址去尾 ?/& 后补
+    // ? 或 &）+ typeNames 原样拼接 + GeoJSON 输出优先。
+    function joinQuery(base) {
+      const b = String(base).trim().replace(/[?&]+$/, '')
+      return b + (b.indexOf('?') >= 0 ? '&' : '?')
+    }
+    function buildGetFeatureUrl(base, typeName) {
+      return joinQuery(base) + 'service=WFS&request=GetFeature&version=2.0.0&typeNames='
+        + String(typeName || '').trim() + '&outputFormat=application/json'
+    }
+    // WFS GetFeature 拉取落 GeoJSON 图层（壳层 v1 语义）；`data` 参数为离线
+    // 路径（测试/调试直接给 GeoJSON 文本，不触网）。输出缺省落 output/ 下。
+    async function servicesFetch(url, layer, output, data) {
+      if (!fs) return { ok: false, error: 'fs service 不可用' }
+      if (!layer || !String(layer).trim()) return { ok: false, error: '缺少图层名（typeNames）' }
+      const typeName = String(layer).trim()
+      const reqUrl = data ? '(inline geojson)' : buildGetFeatureUrl(url || '', typeName)
+      let text
+      if (data) {
+        text = data
+      } else {
+        if (!url || !/^https?:\/\//.test(url)) return { ok: false, error: '服务基址须为 http(s) URL' }
+        try {
+          const ctrl = new AbortController()
+          const timer = setTimeout(() => ctrl.abort(), 10000) // 壳层契约：10s 超时
+          const resp = await fetch(reqUrl, { signal: ctrl.signal, redirect: 'follow' })
+          clearTimeout(timer)
+          text = await resp.text()
+        } catch (e) {
+          return { ok: false, error: 'GetFeature 拉取失败: ' + (e && e.message || e) }
+        }
+      }
+      let fc
+      try {
+        fc = JSON.parse(text)
+        if (!fc || fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) throw new Error('根不是 FeatureCollection')
+      } catch (e) {
+        return { ok: false, error: 'GetFeature 响应不是 GeoJSON FeatureCollection: ' + String(e && e.message || e) }
+      }
+      const out = output || ('output/wfs_' + typeName.replace(/[^\w.-]+/g, '_') + '.geojson')
+      if (!output) await ensureOutDir()
+      try {
+        const target = await fs.resolve(out, { cwd: WORKSPACE })
+        await fs.writeText(target, JSON.stringify(fc))
+        return { ok: true, source: reqUrl, output: fs.processPath ? fs.processPath(target) : out,
+          count: fc.features.length }
+      } catch (e) {
+        return { ok: false, error: '落盘失败: ' + String(e && e.message || e) }
+      }
+    }
+
     // ------ 系统自省 ------
     async function introspect() { return runKanyu(['introspect', '--json'], 60000) }
 
@@ -602,6 +653,7 @@ return {
     harness.handle('introspect', async () => introspect())
     harness.handle('catalog.list', async (a) => catalogList(a && a.dir, a && a.depth))
     harness.handle('services.discover', async (a) => servicesDiscover(a && a.url, a && a.xml))
+    harness.handle('services.fetch', async (a) => servicesFetch(a && a.url, a && a.layer, a && a.output, a && a.data))
     harness.handle('data.info', async (a) => dataInfo(a && a.path))
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
@@ -653,13 +705,20 @@ return {
 
     textTool({
       name: 'kanyu_catalog',
-      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回五分类计数与路径/类型/大小清单；给出 url 时改为 WFS GetCapabilities 图层发现（服务链接）。',
+      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回五分类计数与路径/类型/大小清单；给出 url 时走服务链接：仅 url 为 WFS GetCapabilities 图层发现，url+layer 为 GetFeature 拉取落 GeoJSON 图层。',
       parameters: {
         dir: { type: 'string', description: '起始目录（缺省为会话工作区根）' },
         depth: { type: 'number', description: '递归深度（默认 3）' },
-        url: { type: 'string', description: 'WFS 服务基址（给出时忽略 dir/depth，拉 GetCapabilities 列图层）' },
+        url: { type: 'string', description: 'WFS 服务基址（给出时忽略 dir/depth）' },
+        layer: { type: 'string', description: 'WFS 图层名 typeNames（与 url 同给时拉取该图层落 GeoJSON）' },
+        output: { type: 'string', description: '拉取输出路径（缺省 output/wfs_<图层>.geojson）' },
       },
       async execute(args) {
+        if (args.url && args.layer) {
+          const f = await servicesFetch(args.url, args.layer, args.output)
+          if (!f.ok) return 'WFS 图层拉取失败: ' + f.error
+          return 'WFS 图层 ' + args.layer + ' 已拉取 ' + f.count + ' 个要素 → ' + f.output + '（来源：' + f.source + '）'
+        }
         if (args.url) {
           const d = await servicesDiscover(args.url)
           if (!d.ok) return 'WFS 图层发现失败: ' + d.error
