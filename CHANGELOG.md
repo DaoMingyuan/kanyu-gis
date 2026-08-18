@@ -1,5 +1,21 @@
 # dsh/ 组件变更记录
 
+## [0.24.0] — 2026-08-18
+
+- **坐标框架域深化：投影变换联动闭环**：双客户端坐标页签「投影变换」按钮
+  改专属 `runReproject()`——`crs.reproject` 带 output 落盘
+  `dsh/output/kanyu-reproject-<ts>.geojson` → stderr「已写出 N 个要素」
+  解析 → 展示「源 → 目标：变换 N 要素」→ 落盘成功设 `store.path` 为结果
+  文件并广播（各页签联动跟随当前图层；对齐数据页签 runQuery 语义）。
+  投影结果从「截断 JSON 文本」升级为「可继续检视/渲染/编辑的图层」。
+- **host.js `crsReproject` 健壮性修复**：落盘前先 `ensureOutDir()`——
+  `kanyu data reproject --output` 底层 `write_geojson_result` 同为
+  `std::fs::write` 不建父目录（与上轮 dataQuery 同款防护）。RPC 表不变仍 25。
+- **测试器 +4 断言**（reproject 落盘 + stderr 计数契约、ensureOutDir
+  静态契约、双端 runReproject 契约键）；总计 **82/82 全绿**
+  （static 65/65）。3080 桥实测：4326→4547 带 output 落盘实例工作区，
+  stderr 计数 4 要素正确。
+
 ## [0.23.0] — 2026-08-18
 
 - **数据域深化：查询联动闭环**：双客户端数据页签「查询」按钮改专属

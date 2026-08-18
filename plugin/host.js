@@ -307,7 +307,8 @@ return {
     async function crsReproject(path, from, to, output) {
       const p = await procPath(path)
       const args = ['data', 'reproject', '--json', '--from', q(from), '--to', q(to)]
-      if (output) args.push('--output', q(await procPath(output)))
+      // kanyu data reproject --output 底层 std::fs::write 不建父目录，先确保 dsh/output 存在
+      if (output) { await ensureOutDir(); args.push('--output', q(await procPath(output))) }
       args.push(q(p))
       return runKanyu(args, 180000)
     }

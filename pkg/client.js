@@ -360,11 +360,17 @@ window.__ModuleLoader__.load({
         hostCall('crs.presets', {}).then(r => { if (r && r.ok) setPresets(r.presets) }).catch(() => {})
       }, [])
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
-      async function run() {
+      // 投影变换联动：落盘 dsh/output/ → stderr 解析命中数 → 设为当前图层
+      // （store.path 广播，目录/地图/数据等页签联动跟随；对齐数据页签 runQuery 语义）
+      async function runReproject() {
         setBusy(true); setOut('投影变换中…')
         try {
-          const r = await hostCall('crs.reproject', { path, from, to })
-          setOut(fmtJson(r && r.stdout !== undefined ? { ok: r.ok, exit: r.exitCode, stdout: String(r.stdout).slice(0, 1200), stderr: String(r.stderr).slice(0, 400) } : r))
+          const outPath = 'dsh/output/kanyu-reproject-' + Date.now() + '.geojson'
+          const r = await hostCall('crs.reproject', { path, from, to, output: outPath })
+          if (!r || !r.ok) { setOut('投影变换失败: ' + ((r && String(r.stderr || r.error || '').slice(0, 300)) || '未知')); setBusy(false); return }
+          const m = /已写出 (\d+) 个要素/.exec(r.stderr || '')
+          store.path = outPath; setPath(outPath); props.notify()
+          setOut(from + ' → ' + to + '：变换 ' + (m ? m[1] : '?') + ' 要素 → 已设为当前图层: ' + outPath)
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
@@ -397,7 +403,7 @@ window.__ModuleLoader__.load({
         Field('源 CRS', sel(from, setFrom)),
         Field('目标', sel(to, setTo)),
         h('div', { className: 'kyg-row' },
-          h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: run }, '投影变换')),
+          h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: runReproject }, '投影变换')),
         h(ResultPre, { text: out }),
       )
     }
