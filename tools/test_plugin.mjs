@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（23 个）', rpc.size === 23, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（25 个）', rpc.size === 25, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -281,6 +281,33 @@ async function main() {
     let gpFeat = 0;
     try { gpFeat = JSON.parse(await fsp.readFile(gpOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
     check('geoprocess.run buffer：输出 4 要素', gp.ok && gpFeat === 4, 'features=' + gpFeat);
+  }
+
+  // ⑤b 工具箱注册表（能力 5b：tooldef 37 工具全库，经 kanyu tool CLI 出口）
+  // 静态模式（CI 无 CLI）只断言降级报错形状；全量模式实测内核注册表。
+  if (!STATIC_ONLY) {
+    const tbList = await callRpc('toolbox.list');
+    check('toolbox.list：37 工具注册表（含 buffer/zonal_stats）',
+      tbList.ok && tbList.tools.length === 37
+        && tbList.tools.some(t => t.id === 'buffer') && tbList.tools.some(t => t.id === 'zonal_stats'),
+      tbList.ok ? 'tools=' + tbList.tools.length : tbList.error);
+    const tbOut = path.join(TMP_DIR, 'tool-buffer.geojson');
+    const tbRun = await callRpc('toolbox.run', {
+      id: 'buffer', output: tbOut,
+      params: { layer: EXAMPLE, distance: '0.001|度' },
+    });
+    let tbFeat = 0;
+    try { tbFeat = JSON.parse(await fsp.readFile(tbOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
+    check('toolbox.run buffer：注册表路径输出 4 要素', tbRun.ok && tbFeat === 4,
+      'exit=' + tbRun.exitCode + ' features=' + tbFeat + ' ' + String(tbRun.stderr).slice(0, 120));
+    const tbReport = await callRpc('toolbox.run', { id: 'stats', params: { layer: EXAMPLE } });
+    check('toolbox.run stats：报告类工具 JSON 包装（feature_count=4）',
+      tbReport.ok && /"tool"\s*:\s*"stats"/.test(tbReport.stdout) && /feature_count\\?"?\s*:\s*\\?4/.test(tbReport.stdout),
+      String(tbReport.stdout).slice(0, 160));
+  } else {
+    const tbList = await callRpc('toolbox.list');
+    check('toolbox.list 降级：无 CLI 中文报错指引（不抛异常）',
+      tbList.ok === false && /tool 子命令/.test(String(tbList.error)), String(tbList.error).slice(0, 120));
   }
 
   // ⑥ 地理编辑（能力 6）
@@ -421,7 +448,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 23 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 25 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping

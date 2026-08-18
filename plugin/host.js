@@ -365,6 +365,29 @@ return {
       return runKanyu(args, 300000)
     }
 
+    // ------ 能力 5b：工具箱注册表（tooldef 37 工具全库，经 `kanyu tool` CLI 出口） ------
+    // 与壳层工具箱面板/MCP 工具面同一单一事实来源；GP_TOOLS 13 白名单为精选
+    // 快捷面保持不变。CLI 过旧无 tool 子命令时中文报错指引升级（无本地兜底——
+    // 注册表定义在内核，JS 侧不重复造表）。
+    async function toolboxList() {
+      const r = await runKanyu(['tool', 'list', '--json'], 60000)
+      const j = parseJsonLoose(r.stdout)
+      if (r.ok && Array.isArray(j)) return { ok: true, source: 'kanyu tool list（core::tooldef 注册表）', tools: j }
+      return { ok: false, error: 'kanyu CLI 无 tool 子命令或输出异常（请升级 kanyu CLI 至含 tool 组版本）'
+        + (r.stderr ? '；stderr: ' + r.stderr.slice(0, 300) : '') }
+    }
+    async function toolboxRun(id, params, output) {
+      if (!id) return { ok: false, error: '缺少工具 id（toolbox.list 查看注册表）' }
+      const args = ['tool', 'run', '--json', q(String(id))]
+      const kv = params || {}
+      for (const k of Object.keys(kv)) {
+        const v = kv[k]
+        if (v !== undefined && v !== null && v !== '') args.push('--param', q(k + '=' + v))
+      }
+      if (output) args.push('--output', q(await procPath(output)))
+      return runKanyu(args, 300000)
+    }
+
     // ------ 能力 6：地理编辑（GeoJSON 在线编辑内核） ------
     // 对齐 kanyu-edit 内核范式（crates/kanyu-edit/src/history.rs）：命令逆操作
     // 双栈——每个变更算子在应用时同步计算结构化逆操作，按源文件键控入 undo 栈
@@ -779,6 +802,8 @@ return {
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))
     harness.handle('geoprocess.list', async () => ({ ok: true, tools: GP_TOOLS }))
+    harness.handle('toolbox.list', async () => toolboxList())
+    harness.handle('toolbox.run', async (a) => toolboxRun(a && a.id, a && a.params, a && a.output))
     harness.handle('geoprocess.run', async (a) => geoprocessRun(a && a.tool, a && a.input, a && a.input2, a && a.output, a && a.params))
     harness.handle('edit.ops', async () => ({ ok: true, ops: EDIT_OPS }))
     harness.handle('edit.geometry', async (a) => editGeometry(a && a.path, a && a.maxFeatures))

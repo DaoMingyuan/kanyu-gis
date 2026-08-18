@@ -1,5 +1,22 @@
 # dsh/ 组件变更记录
 
+## [0.19.0] — 2026-08-18
+
+- **处理域深化：工具箱注册表全库接内核 tooldef（37 工具）**：主仓 `kanyu-cli`
+  新增顶层子命令 `kanyu tool list`（--json 输出含参数表全量定义）/
+  `kanyu tool run <id> --param k=v...`（直连 core::tooldef 注册表 +
+  toolrun::run_tool 统一执行入口——Layer 参数值按文件路径预加载、多图层
+  逗号/换行分隔、枚举内核值或中文标签均可、报告类 --json 包装、多产出
+  --output 视作目录；docs/CLI.md 新增 §4C），与壳层工具箱面板/MCP 工具面
+  同一单一事实来源。组件侧新增 `toolbox.list`/`toolbox.run` RPC
+  （RPC 表 23→**25**）；CLI 过旧无 tool 子命令时中文报错指引升级（无本地
+  兜底——注册表定义在内核，JS 侧不重复造表）。GP_TOOLS 13 白名单精选
+  快捷面保留不动。
+- **测试器 +4 断言**（全量：37 工具清单含 buffer/zonal_stats + 注册表路径
+  buffer 输出 4 要素 + stats 报告 JSON 包装；静态：无 CLI 降级报错形状），
+  RPC 计数断言 23→25；总计 **68/68 全绿**（static 55/55）。
+- 双客户端处理页签的工具箱全库表单下轮跟进（本轮 RPC 面先行）。
+
 ## [0.18.0] — 2026-08-18
 
 - **坐标框架域深化：CRS 全库检索接内核 EPSG 库**：主仓 `kanyu-cli` 新增顶层

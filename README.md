@@ -24,7 +24,7 @@
 | GIS 数据目录读取 | `kanyu_catalog` / `kanyu_data` | 五分类工程目录（壳层 catalog.rs 范式：地图框=渲染产物 / 布局框=.kyu layouts / 数据库=.kdb/.kyu / 服务链接=WFS+WMS / 本机数据）+ `kanyu data info/query/validate` + `data.preview` 属性表（纯 fs）+ 格式注册表 |
 | 坐标框架 | `kanyu_crs` | `kanyu crs search/info`（EPSG 全库 7507 条检索/检视）+ `kanyu data reproject` |
 | 工程目录 | Client 目录页签 | `catalog.list` RPC（扩展名矩阵对齐 `format.rs`） |
-| 地理处理 | `kanyu_geoprocess` | `kanyu analysis <13 工具>`（QGIS 语义） |
+| 地理处理 | `kanyu_geoprocess` | `kanyu analysis <13 工具>`（QGIS 语义，精选白名单）+ `kanyu tool list/run`（tooldef 37 工具注册表全库，与壳层工具箱/MCP 同一事实来源） |
 | 地理编辑 | `kanyu_edit` | 组件内 GeoJSON 编辑内核（6 算子 + 命令逆操作双栈 undo/redo，对齐 `kanyu-edit` 范式）+ 属性单元格编辑（点选行写入）+ 顶点编辑画布（拖拽写 vertex-move）；深度拓扑编辑由 `kanyu-edit` crate 承接 |
 | 3D 地理 | `kanyu_scene3d` | 挤出体场景数据制备 + Client canvas 软件 3D 管线（对齐 scene3d.rs：yaw/pitch 拖拽旋转/背面剔除/质心纵深排序/两档明暗） |
 
