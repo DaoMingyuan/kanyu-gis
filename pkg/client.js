@@ -826,7 +826,7 @@ window.__ModuleLoader__.load({
       // 落点 line-split，绘制点=单击即 feature-add Point，绘制线/面=攒点应用
       // feature-add LineString/Polygon（面自动闭合）；
       // drawRef 攒数据坐标（state 异步不可用于事件链，对齐 vertDrag ref 范式）
-      const [drawMode, setDrawMode] = React.useState('') // '' | 'hole' | 'split' | 'addPoint' | 'addLine' | 'addPolygon'
+      const [drawMode, setDrawMode] = React.useState('') // '' | 'hole' | 'split' | 'addPoint' | 'addLine' | 'addPolygon' | 'cutPoly'
       const drawRef = React.useRef([])
       const [drawN, setDrawN] = React.useState(0)
       // 框选批量移动（2026-08-18 第六十五轮）：marquee 开时画布拖橡皮筋多选顶点
@@ -1085,6 +1085,31 @@ window.__ModuleLoader__.load({
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // 面切割（WASM 技能通道，2026-08-18 第六十六轮）：画布攒切割线（≥2 点），
+      // host 注入 _role="cut" 后走 split_polygons.wasm（kanyu skill run CLI 出口，
+      // 内核 geo Buffer+BooleanOps 差集劈分）；产出落 dsh/output 接力为当前图层
+      async function applyCutPoly() {
+        const pts = drawRef.current
+        if (pts.length < 2) { setOut('切割线至少需要 2 个顶点（当前 ' + pts.length + '）'); return }
+        const outPath = 'dsh/output/kanyu-split-' + Date.now() + '.geojson'
+        setBusy(true); setOut('面切割应用中（' + pts.length + ' 点切割线）…')
+        try {
+          const r = await hostCall('skill.run', { skill: 'dsh/skills/split_polygons.wasm', input: path, output: outPath, cutLine: pts })
+          if (r && r.ok) {
+            drawRef.current = []; setDrawN(0)
+            store.path = outPath; setPath(outPath)
+            store.rev++; props.notify()
+            setAttrs(null)
+            setOut('面切割完成 → 已设为当前图层: ' + outPath)
+            const g2 = await hostCall('edit.geometry', { path: outPath, maxFeatures: 200 })
+            if (g2 && g2.ok) setGeo(g2)
+          } else {
+            setOut('面切割失败: ' + String(r && (r.stderr || r.error) || '未知').slice(0, 400))
+            drawOverlay()
+          }
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
       // 编辑写回联动刷新（与 vUp 同语义）：产出接力当前路径 + 版本号广播 + 几何重载
       async function afterEdit(r) {
         const nextPath = (r && r.ok && !inPlace && r.output) ? r.output : path
@@ -1225,8 +1250,12 @@ window.__ModuleLoader__.load({
             drawMode === 'addLine' ? '退出绘制线' : '绘制线'),
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy, onClick: () => toggleDraw('addPolygon') },
             drawMode === 'addPolygon' ? '退出绘制面' : '绘制面'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy, onClick: () => toggleDraw('cutPoly') },
+            drawMode === 'cutPoly' ? '退出面切割' : '面切割'),
           drawMode === 'hole' && drawN >= 3
             ? h('button', { className: 'kyg-btn', disabled: busy, onClick: applyHole }, '应用挖洞（' + drawN + ' 点）') : null,
+          drawMode === 'cutPoly' && drawN >= 2
+            ? h('button', { className: 'kyg-btn', disabled: busy, onClick: applyCutPoly }, '应用面切割（' + drawN + ' 点）') : null,
           (drawMode === 'addLine' && drawN >= 2) || (drawMode === 'addPolygon' && drawN >= 3)
             ? h('button', { className: 'kyg-btn', disabled: busy, onClick: applyDrawNew },
                 '应用绘制' + (drawMode === 'addPolygon' ? '面' : '线') + '（' + drawN + ' 点）') : null,
@@ -1241,7 +1270,9 @@ window.__ModuleLoader__.load({
               ? '绘制点：单击画布落点即 feature-add Point（属性空表待属性页签补录）'
               : drawMode === 'addLine'
                 ? '绘制线：逐点点击 ≥2 点后「应用绘制线」（feature-add LineString）'
-                : '绘制面：逐点点击 ≥3 点后「应用绘制面」（feature-add Polygon，自动闭合）') : null,
+                : drawMode === 'addPolygon'
+                  ? '绘制面：逐点点击 ≥3 点后「应用绘制面」（feature-add Polygon，自动闭合）'
+                  : '面切割：逐点点击 ≥2 点成切割线后「应用面切割」（split_polygons.wasm 技能劈开全部横贯面，产出新图层；原数据不动）') : null,
         h(ResultPre, { text: out }),
       )
     }

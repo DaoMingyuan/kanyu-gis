@@ -86,10 +86,15 @@ export function apply(ctx, config) {
 
   // host.js 是 vm 沙箱函数体（顶层 return 导出插件对象），
   // new Function 与宿主 vm 求值语义等价（全局隔离、参数注入）。
+  // skillDir：捆绑 WASM 技能目录（仓库 dsh/skills 绝对路径）——与 host.js 同源
+  // 定位（config.hostSource 优先/realpath 回退；pnpm file: 安装形态 realpath
+  // 可能滞留 node_modules 副本目录，故不可独立按 import.meta.url 推算）。
+  // 生产实例会话工作区无 dsh/ 源码树，host.js skill.run 据此定位 split_polygons.wasm 等
+  const skillDir = path.join(path.dirname(resolveHostSource(config)), '..', 'skills')
   const plugin = new Function(
-    'ctx', 'harness', 'console', 'btoa', 'atob', 'TextEncoder', 'TextDecoder',
+    'ctx', 'harness', 'console', 'btoa', 'atob', 'TextEncoder', 'TextDecoder', 'skillDir',
     hostSrc,
-  )(ctx, harness, console, btoa, atob, TextEncoder, TextDecoder)
+  )(ctx, harness, console, btoa, atob, TextEncoder, TextDecoder, skillDir)
 
   if (!plugin || typeof plugin.apply !== 'function') {
     console.error('kanyu-gis 静态插件：host.js 未导出 apply，停用')

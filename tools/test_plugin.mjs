@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（31 个）', rpc.size === 31, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（32 个）', rpc.size === 32, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -767,6 +767,25 @@ async function main() {
     { feature: 0, ringPath: [0], vertex: 1, x: 6, y: 1 }, { feature: 99, x: 0, y: 0 }] } });
   check('vertices-move 校验：任一项越界整体不变更（先校验后写入）', !vmBad.ok && /feature 越界/.test(vmBad.error || ''), vmBad.error || '');
 
+  // ⑥+++++++++ 面切割 WASM 技能通道（2026-08-18 第六十六轮）：split_polygons guest（geo Buffer+BooleanOps）+ skill.run RPC
+  const cutSrc = path.join(TMP_DIR, 'split-poly-test.geojson');
+  await fsp.writeFile(cutSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] }, properties: { name: '地块A' } },
+  ] }));
+  const cutRel = path.relative(REPO_ROOT, cutSrc);
+  const cutOut = path.join(TMP_DIR, 'split-poly-out.geojson');
+  const sk1 = await callRpc('skill.run', { skill: 'dsh/skills/split_polygons.wasm', input: cutRel, output: path.relative(REPO_ROOT, cutOut), cutLine: [[5, -1], [5, 11]] });
+  let skOk = false;
+  try {
+    const fs9 = JSON.parse(await fsp.readFile(cutOut, 'utf8')).features;
+    skOk = fs9.length === 2 && fs9.every(f => f.properties && f.properties.name === '地块A' && typeof f.properties._part === 'number');
+  } catch { /* 断言兜底 */ }
+  check('skill.run 面切割：切割线注入 + split_polygons.wasm 劈分为 2（属性继承 + _part 序号）', sk1.ok && skOk, String(sk1.stderr || sk1.error || '').slice(0, 120));
+  const skMiss = await callRpc('skill.run', { skill: 'dsh/skills/split_polygons.wasm', input: cutRel, cutLine: [[20, 20], [30, 30]] });
+  check('skill.run 面切割校验：未横贯中文报错（技能业务错误直通 stderr）', !skMiss.ok && /未劈开/.test(skMiss.stderr || ''), String(skMiss.stderr || '').slice(0, 120));
+  const skNoCut = await callRpc('skill.run', { skill: 'dsh/skills/split_polygons.wasm', input: cutRel });
+  check('skill.run 校验：无切割线输入中文报错（guest _role 契约）', !skNoCut.ok && /未找到切割线/.test(skNoCut.stderr || ''), String(skNoCut.stderr || '').slice(0, 120));
+
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
   check('scene3d.data：bbox + 高度提取', s3d.ok && Array.isArray(s3d.bbox) && s3d.count >= 3,
@@ -944,6 +963,11 @@ async function main() {
   check('client.js 顶点框选批量移动（marquee 橡皮筋 + selRef 选择集 + vertices-move 批量拖拽接线）',
     editMarqueeKeys.every((k) => clientSrc.includes(k)),
     editMarqueeKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 面切割 WASM 技能通道（2026-08-18 第六十六轮）：cutPoly 绘制切割线 + skill.run 接线
+  const editCutKeys = ["'cutPoly'", 'applyCutPoly', "'skill.run'", 'split_polygons.wasm', '面切割', '应用面切割（'];
+  check('client.js 面切割画布模式（cutPoly 攒切割线 + applyCutPoly 走 skill.run WASM 技能）',
+    editCutKeys.every((k) => clientSrc.includes(k)),
+    editCutKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -1067,6 +1091,9 @@ async function main() {
   check('pkg/client.js 顶点框选批量移动（与动态半同契约）',
     editMarqueeKeys.every((k) => pkgClientSrc.includes(k)),
     editMarqueeKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 面切割画布模式（与动态半同契约）',
+    editCutKeys.every((k) => pkgClientSrc.includes(k)),
+    editCutKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
@@ -1100,7 +1127,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 31 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 32 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
   // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
   // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）

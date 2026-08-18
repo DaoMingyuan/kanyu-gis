@@ -1,5 +1,23 @@
 # dsh/ 组件变更记录
 
+## [0.62.0] — 2026-08-18
+
+- **面切割 WASM 技能通道（第六十六轮，内核 geo BooleanOps 经技能沙箱进组件）**：
+  新 guest crate `dsh/skills/split_polygons/`（attr_scaler 模板 + geo 0.33
+  Buffer/BooleanOps——切割线微缓冲窄条带与目标面差集劈分，ε=范围×1e-6，
+  属性继承 + `_part` 序号，洞环随差集正确归属，未横贯中文报错），构建链
+  `cargo build --target wasm32-unknown-unknown --release` + `wasm-tools
+  component new` 产出 `dsh/skills/split_polygons.wasm`（379KB 入仓）；
+  host.js RPC 31→32 新增 `skill.run`（`kanyu skill run` CLI 出口 + cutLine
+  注入 `_role="cut"` 滚动临时输入，原数据不动）；pkg 适配器注入 skillDir
+  （与 host.js 同源 resolveHostSource 定位——pnpm file: 安装形态 realpath
+  滞留 node_modules 的坑入档注释）；双端 client.js 编辑画布「面切割」模式
+  （cutPoly 攒切割线 ≥2 点应用，产出落 dsh/output 接力当前图层 + 版本号
+  广播 + 几何重载）。
+- 测试器 190→**195** / static 154→**159**（+3 功能实测：劈分属性继承 /
+  未横贯报错 / 无切割线报错，+2 双端画布契约键）；3080 生产桥实测通过
+  （两面横贯其一 → 3 要素，_part 0/1 属性继承）。
+
 ## [0.61.0] — 2026-08-18
 
 - **顶点框选批量移动（第六十五轮，vertices-move 原子批量算子）**：

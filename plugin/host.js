@@ -597,6 +597,39 @@ return {
       return runKanyu(args, 300000)
     }
 
+    // ------ 能力 5c：WASM 技能通道（2026-08-18 第六十六轮，`kanyu skill run` CLI 出口） ------
+    // 面切割等内核 geo BooleanOps 类算子以 WASM 组件技能承载（dsh/skills/*.wasm，
+    // 单一事实源 guest 源码在同名目录）；skill/input 限工作区内路径（同其他文件算子）
+    async function skillRun(skill, input, output, cutLine) {
+      if (!skill) return { ok: false, error: '缺少技能路径（dsh/skills/*.wasm）' }
+      if (!input) return { ok: false, error: '缺少输入数据路径' }
+      // 捆绑技能解析：'dsh/skills/x.wasm' 相对形在静态形态优先插件自带目录
+      // （pkg 适配器注入 skillDir = 仓库 dsh/skills 绝对路径——生产实例的会话
+      // 工作区没有 dsh/ 源码树）；动态形态/开发态缺省走 procPath（工作区即仓库根）
+      let skillProc = await procPath(skill)
+      if (typeof skillDir === 'string' && skillDir && /^dsh[\/\\]skills[\/\\]/.test(String(skill))) {
+        skillProc = skillDir + '/' + String(skill).split(/[\/\\]/).pop()
+      }
+      let inputPath = input
+      if (Array.isArray(cutLine)) {
+        // 画布切割线：注入 _role="cut" LineString 要素走滚动临时输入（原数据不动；
+        // 固定名自我覆盖不淤积——桌面单用户语义，与编辑画布单会话一致）
+        if (cutLine.length < 2) return { ok: false, error: '切割线至少需要 2 个顶点' }
+        const rd = await editReadFc(await procPath(input))
+        if (rd.error) return { ok: false, error: rd.error }
+        rd.fc.features.push({ type: 'Feature',
+          geometry: { type: 'LineString', coordinates: cutLine }, properties: { _role: 'cut' } })
+        await ensureOutDir()
+        inputPath = 'dsh/output/.skill-input.tmp.geojson'
+        const werr = await editWriteFc(inputPath, rd.fc)
+        if (werr) return { ok: false, error: '切割线注入失败: ' + werr }
+      }
+      const args = ['skill', 'run', q(skillProc), q(await procPath(inputPath))]
+      // kanyu skill run --output 底层 std::fs::write 不建父目录，先确保 dsh/output 存在
+      if (output) { await ensureOutDir(); args.push('--output', q(await procPath(output))) }
+      return runKanyu(args, 180000)
+    }
+
     // ------ 能力 6：地理编辑（GeoJSON 在线编辑内核） ------
     // 对齐 kanyu-edit 内核范式（crates/kanyu-edit/src/history.rs）：命令逆操作
     // 双栈——每个变更算子在应用时同步计算结构化逆操作，按源文件键控入 undo 栈
@@ -1310,6 +1343,7 @@ return {
     harness.handle('geoprocess.list', async () => ({ ok: true, tools: GP_TOOLS }))
     harness.handle('toolbox.list', async () => toolboxList())
     harness.handle('toolbox.run', async (a) => toolboxRun(a && a.id, a && a.params, a && a.output))
+    harness.handle('skill.run', async (a) => skillRun(a && a.skill, a && a.input, a && a.output, a && a.cutLine))
     harness.handle('geoprocess.run', async (a) => geoprocessRun(a && a.tool, a && a.input, a && a.input2, a && a.output, a && a.params))
     harness.handle('edit.ops', async () => ({ ok: true, ops: EDIT_OPS }))
     harness.handle('edit.geometry', async (a) => editGeometry(a && a.path, a && a.maxFeatures))
