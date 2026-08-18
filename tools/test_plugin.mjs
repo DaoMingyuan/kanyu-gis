@@ -164,6 +164,9 @@ async function main() {
   // kanyu_crs reproject 回执计数（2026-08-18 第三十轮）：模型侧确认文本带要素数
   check('host.js kanyu_crs reproject 落盘分支含计数确认文本（对齐客户端 runReproject 语义）',
     /投影变换完成：/.test(hostSrc));
+  // kanyu_geoprocess 产出回执（2026-08-18 第三十一轮）：双分支附 stderr 写出清单
+  check('host.js kanyu_geoprocess 产出回执（writesSummary 解析「已写出 N 要素 → path」共用契约）',
+    hostSrc.includes('writesSummary') && hostSrc.includes('产出: '));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -432,6 +435,18 @@ async function main() {
     check('动态工具 kanyu_geoprocess(mean_coordinates)：注册表分支输出 1 要素',
       typeof gpReg === 'string' && /注册表全库/.test(gpReg) && meanFeat === 1,
       String(gpReg).slice(0, 120) + ' features=' + meanFeat);
+    // 产出回执（2026-08-18 第三十一轮）：注册表分支回执附 stderr 写出清单
+    check('动态工具 kanyu_geoprocess(mean_coordinates+output)：注册表分支产出回执（1 要素 → path）',
+      typeof gpReg === 'string' && /产出: 1 要素 → .+mean-coords\.geojson/.test(gpReg),
+      String(gpReg).slice(0, 160));
+    // 白名单分支同款回执（buffer 精选面，显式 output 避免落工作区根）
+    const gpBufOut = path.join(TMP_DIR, 'gp-buffer-out.geojson');
+    const gpBuf = tGp && await tGp.execute({ tool: 'buffer', input: EXAMPLE, output: gpBufOut, params: { distance: 0.001 } });
+    let gpBufFeat = 0;
+    try { gpBufFeat = JSON.parse(await fsp.readFile(gpBufOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
+    check('动态工具 kanyu_geoprocess(buffer)：白名单分支产出回执（4 要素 → path）+ 落盘一致',
+      typeof gpBuf === 'string' && /工具 buffer 完成/.test(gpBuf) && /产出: 4 要素 → .+gp-buffer-out\.geojson/.test(gpBuf) && gpBufFeat === 4,
+      String(gpBuf).slice(0, 160) + ' features=' + gpBufFeat);
     const gpBad = tGp && await tGp.execute({ tool: 'nonexistent_tool', input: EXAMPLE });
     check('动态工具 kanyu_geoprocess(未知 id)：注册表中文报错不静默',
       typeof gpBad === 'string' && /未知工具/.test(gpBad), String(gpBad).slice(0, 120));

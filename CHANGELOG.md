@@ -1,5 +1,17 @@
 # dsh/ 组件变更记录
 
+## [0.28.0] — 2026-08-18
+
+- **GIS 模式 AI 面整合：`kanyu_geoprocess` 双分支产出回执**：精选白名单与
+  注册表双分支成功回执均附「产出: N 要素 → path（可继续作为 input/path
+  接力检视/渲染/编辑）」——新增 `writesSummary` 解析 stderr「已写出 N
+  个要素 → path」共用契约（与客户端 tbRun 同源）。此前白名单分支缺省落
+  OUT_DIR 但回执无路径无计数、注册表分支带 output 时 stdout 空回执无
+  产出信息。RPC 表不变仍 25（纯动态工具文本面）。
+- **测试器 +3 断言**（注册表 mean_coordinates 产出回执、白名单 buffer
+  产出回执 + 落盘一致、hostSrc writesSummary 契约键）；总计 **93/93
+  全绿**（static 71/71）。
+
 ## [0.27.0] — 2026-08-18
 
 - **GIS 模式 AI 面整合：`kanyu_crs` reproject 回执补命中计数**：动态工具

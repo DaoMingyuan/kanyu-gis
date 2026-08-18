@@ -1007,6 +1007,14 @@ return {
       async execute(args) {
         // 双轨分流：精选 13 白名单走 GP_TOOLS（参数形状对齐 kanyu analysis）；
         // 其余 id 走 tooldef 注册表全库（toolbox.run → kanyu tool run）。
+        // 产出回执：stderr「已写出 N 个要素 → path」共用契约（与客户端 tbRun
+        // 同源）——产图层工具回执附写出清单，模型可拿路径继续接力。
+        const writesSummary = (stderr) => {
+          const writes = [...String(stderr || '').matchAll(/已写出 (\d+) 个要素 → (.+)/g)]
+          if (!writes.length) return ''
+          return '\n产出: ' + writes.map(w => w[1] + ' 要素 → ' + w[2].trim()).join('；')
+            + '（可继续作为 input/path 接力检视/渲染/编辑）'
+        }
         if (!GP_TOOLS.some(t => t.id === args.tool)) {
           const params = Object.assign({}, args.params)
           // 便捷映射：input → layer（params 未显式给 layer 时）；第二输入
@@ -1016,12 +1024,12 @@ return {
           const r = await toolboxRun(args.tool, params, args.output)
           const j = parseJsonLoose(r.stdout)
           const head = r.ok ? '工具 ' + args.tool + ' 完成（注册表全库）' : '工具 ' + args.tool + ' 失败(exit ' + r.exitCode + ')'
-          return head + '\n' + (j ? JSON.stringify(j).slice(0, 4000) : (r.ok ? r.stdout.slice(0, 4000) : r.stderr.slice(0, 2000)))
+          return head + writesSummary(r.ok ? r.stderr : '') + '\n' + (j ? JSON.stringify(j).slice(0, 4000) : (r.ok ? r.stdout.slice(0, 4000) : r.stderr.slice(0, 2000)))
         }
         const r = await geoprocessRun(args.tool, args.input, args.input2, args.output, args.params)
         const j = parseJsonLoose(r.stdout)
         const head = r.ok ? '工具 ' + args.tool + ' 完成' : '工具 ' + args.tool + ' 失败(exit ' + r.exitCode + ')'
-        return head + '\n' + (j ? JSON.stringify(j).slice(0, 4000) : (r.ok ? r.stdout.slice(0, 4000) : r.stderr.slice(0, 2000)))
+        return head + writesSummary(r.ok ? r.stderr : '') + '\n' + (j ? JSON.stringify(j).slice(0, 4000) : (r.ok ? r.stdout.slice(0, 4000) : r.stderr.slice(0, 2000)))
       },
     })
 
