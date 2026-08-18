@@ -243,6 +243,14 @@ return {
       const p = await procPath(path)
       return runKanyu(['data', 'validate', '--json', q(p)])
     }
+    // 字段计算器（attrcalc 内核出口：表达式逐要素求值写入 target 字段）
+    async function dataCalc(path, target, expr, output) {
+      const p = await procPath(path)
+      const args = ['data', 'calc', '--json', '--target', q(target), '--expr', q(expr)]
+      if (output) { await ensureOutDir(); args.push('--output', q(await procPath(output))) }
+      args.push(q(p))
+      return runKanyu(args)
+    }
     // 属性表预览（纯 fs 读面，对齐壳层 attrtable.rs 的只读表语义：字段并集 +
     // 前 N 行；不经 CLI——--static 模式与无 CLI 环境亦可覆盖；GeoJSON 先行）
     async function dataPreview(path, limit) {
@@ -920,13 +928,15 @@ return {
 
     textTool({
       name: 'kanyu_data',
-      description: '读取 GIS 数据：action=info 检视（格式/要素数/字段清单）、query 属性查询（filter 如 "height > 50"；带 output 则结果落盘 GeoJSON 并返回命中计数确认，产出可继续作为 path 传给本工具/kanyu_render/kanyu_edit）、validate 宗地 TXT 质检、preview 属性表预览（字段并集 + 前 N 行，纯读面不经 CLI）。',
+      description: '读取 GIS 数据：action=info 检视（格式/要素数/字段清单）、query 属性查询（filter 如 "height > 50"；带 output 则结果落盘 GeoJSON 并返回命中计数确认，产出可继续作为 path 传给本工具/kanyu_render/kanyu_edit）、validate 宗地 TXT 质检、preview 属性表预览（字段并集 + 前 N 行，纯读面不经 CLI）、calc 字段计算器（attrcalc 内核：expr 表达式逐要素求值写入 target 字段，不存在则新建；支持 +-*/%、比较、and/or/not、round/upper/concat/coalesce 等函数与 $area/$length/$x/$y 几何虚列）。',
       parameters: {
-        action: { type: 'string', required: true, description: 'info | query | validate | preview' },
+        action: { type: 'string', required: true, description: 'info | query | validate | preview | calc' },
         path: { type: 'string', required: true, description: '数据文件路径' },
         filter: { type: 'string', description: 'query 时的过滤表达式："field op value"，op ∈ == != > >= < <=' },
-        output: { type: 'string', description: 'query 结果输出路径（GeoJSON，可选；给出则落盘并回执命中数，缺省打印结果）' },
+        output: { type: 'string', description: 'query/calc 结果输出路径（GeoJSON，可选；给出则落盘并回执要素数，缺省打印结果）' },
         limit: { type: 'number', description: 'preview 时的行数上限（默认 50，最大 200）' },
+        target: { type: 'string', description: 'calc 时的目标字段（不存在则新建，存在则覆盖）' },
+        expr: { type: 'string', description: 'calc 时的表达式（如 "[height] * 2" 或 "$area / 10000"）' },
       },
       async execute(args) {
         if (args.action === 'preview') {
@@ -937,14 +947,16 @@ return {
           return text.slice(0, 5000)
         }
         const r = args.action === 'query' ? await dataQuery(args.path, args.filter || '', args.output)
+          : args.action === 'calc' ? await dataCalc(args.path, args.target || '', args.expr || '', args.output)
           : args.action === 'validate' ? await dataValidate(args.path)
           : await dataInfo(args.path)
-        // query 落盘分支：stdout 为空，命中数在 stderr「已写出 N 个要素 → path」，
+        // query/calc 落盘分支：stdout 为空，要素数在 stderr「已写出 N 个要素 → path」，
         // 模型侧须拿到确认文本而非空串（对齐客户端 runQuery 语义）
-        if (args.action === 'query' && args.output && r.ok) {
+        if ((args.action === 'query' || args.action === 'calc') && args.output && r.ok) {
           const m = /已写出 (\d+) 个要素 → (.+)/.exec(r.stderr || '')
-          return m ? '查询完成：命中 ' + m[1] + ' 要素 → 已写出: ' + m[2].trim() + '（可继续作为 path 检视/渲染/编辑）'
-            : '查询完成 → 已写出: ' + args.output
+          const what = args.action === 'calc' ? '字段计算完成（' + (args.target || '?') + '）：' : '查询完成：命中 '
+          return m ? what + m[1] + ' 要素 → 已写出: ' + m[2].trim() + '（可继续作为 path 检视/渲染/编辑）'
+            : what + '已写出: ' + args.output
         }
         const j = parseJsonLoose(r.stdout)
         if (j) return JSON.stringify(j).slice(0, 6000)

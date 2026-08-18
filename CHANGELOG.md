@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.40.0] — 2026-08-18
+
+- **字段计算器出口（attrcalc 内核 → CLI → 组件模型侧）**：主仓新增
+  `kanyu data calc <file> --target <field> --expr <expr> [--output]`
+  （`DataCommand::Calc` → `attrcalc::calc_field`，逐要素求值写入目标字段，
+  不存在则新建；支持 +-*/%、比较、and/or/not、round/upper/concat/coalesce
+  等函数与 $area/$length/$x/$y 几何虚列，对齐壳层属性表字段计算器）。
+  组件侧 `kanyu_data` 动态工具新增 `action=calc`（dataCalc 助手 +
+  ensureOutDir 落盘防护 + 「字段计算完成（target）：N 要素 → 已写出」
+  确认回执，与 query 落盘分支同契约）。此前 attrcalc 只有壳层 attrtable
+  与 kanyu-py 两个消费者，CLI/组件无出口。
+- **测试器 +4 断言**（静态契约键 + calc 落盘值 177=88.5×2 / stdout JSON
+  直通 / 错误表达式失败回执）；总计 **119/119 全绿**（static 93/93）。
+
 ## [0.39.0] — 2026-08-18
 
 - **双半盘点 + RPC 面对称锁**：实测动态半（plugin）与静态半（pkg）RPC

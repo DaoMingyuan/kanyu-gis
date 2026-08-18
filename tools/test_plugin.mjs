@@ -164,6 +164,9 @@ async function main() {
   // kanyu_crs reproject 回执计数（2026-08-18 第三十轮）：模型侧确认文本带要素数
   check('host.js kanyu_crs reproject 落盘分支含计数确认文本（对齐客户端 runReproject 语义）',
     /投影变换完成：/.test(hostSrc));
+  // kanyu_data calc 字段计算器（2026-08-18 第四十三轮）：attrcalc 内核出口契约键
+  check('host.js kanyu_data calc 契约键（dataCalc + ensureOutDir 防护 + 落盘确认文本）',
+    /async function dataCalc[\s\S]*?ensureOutDir\(\)/.test(hostSrc) && hostSrc.includes('字段计算完成（'));
   // kanyu_geoprocess 产出回执（2026-08-18 第三十一轮）：双分支附 stderr 写出清单
   check('host.js kanyu_geoprocess 产出回执（writesSummary 解析「已写出 N 要素 → path」共用契约）',
     hostSrc.includes('writesSummary') && hostSrc.includes('产出: '));
@@ -309,6 +312,22 @@ async function main() {
     check('动态工具 kanyu_data(query+output)：命中计数确认文本 + 落盘文件要素一致（非空串）',
       typeof kdText === 'string' && /查询完成：命中 \d+ 要素 → 已写出: /.test(kdText) && kdWritten > 0,
       String(kdText).slice(0, 100) + ' written=' + kdWritten);
+    // kanyu_data calc 字段计算器（2026-08-18 第四十三轮，CLI 依赖）：attrcalc 内核经 kanyu data calc 出口
+    const kcalcOut = path.join(TMP_DIR, 'kanyu-data-calc.geojson');
+    const kcalcText = tData && await tData.execute({ action: 'calc', path: EXAMPLE, target: 'h2', expr: '[height] * 2', output: kcalcOut });
+    let kcalcH2 = null;
+    try { kcalcH2 = JSON.parse(await fsp.readFile(kcalcOut, 'utf8')).features[0].properties.h2; } catch { /* 解析失败即 null */ }
+    check('动态工具 kanyu_data(calc+output)：确认回执 + 落盘字段值（h2 = 88.5×2 = 177）',
+      typeof kcalcText === 'string' && /字段计算完成（h2）：4 要素 → 已写出: /.test(kcalcText) && kcalcH2 === 177,
+      String(kcalcText).slice(0, 120) + ' h2=' + kcalcH2);
+    const kcalcPrint = tData && await tData.execute({ action: 'calc', path: EXAMPLE, target: 'h2', expr: '[height] * 2' });
+    check('动态工具 kanyu_data(calc 无 output)：stdout JSON 直通含计算字段',
+      typeof kcalcPrint === 'string' && /"h2":\s*177/.test(kcalcPrint),
+      String(kcalcPrint).slice(0, 80));
+    const kcalcErr = tData && await tData.execute({ action: 'calc', path: EXAMPLE, target: 'h2', expr: '1 +' });
+    check('动态工具 kanyu_data(calc 错误表达式)：失败回执非空（解析错误带中文提示）',
+      typeof kcalcErr === 'string' && /失败/.test(kcalcErr),
+      String(kcalcErr).slice(0, 120));
     // kanyu_crs reproject 回执计数（2026-08-18 第三十轮，CLI 依赖）：模型侧对齐 runReproject 语义
     const tCrs = tools.get('kanyu_crs');
     const kcOut = path.join(TMP_DIR, 'kanyu-crs-reproject.geojson');
