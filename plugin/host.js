@@ -654,9 +654,13 @@ return {
         if (seen.length >= 12 && !seen.includes('其他')) seen.push('其他')
         categories = seen
       }
+      // 高度范围（挤出量级摘要）：逐要素 height 已归一（缺字段取 10），顺手累积
+      let minH = Infinity, maxH = -Infinity
+      for (const f of out) { if (f.height < minH) minH = f.height; if (f.height > maxH) maxH = f.height }
       return {
         ok: true, source: p, heightField: hf,
         colorField: colorField || null, categories,
+        heightRange: out.length ? [minH, maxH] : null,
         count: out.length, total: feats.length,
         bbox: isFinite(minX) ? [minX, minY, maxX, maxY] : null,
         features: out,
@@ -1070,8 +1074,10 @@ return {
       async execute(args) {
         const r = await scene3dData(args.path, args.heightField, args.maxFeatures, args.colorField)
         if (!r.ok) return '3D 数据制备失败: ' + r.error
-        return '3D 场景: ' + r.count + '/' + r.total + ' 要素，高度字段 ' + r.heightField + '，bbox=' + JSON.stringify(r.bbox)
+        return '3D 场景: ' + r.count + '/' + r.total + ' 要素，高度字段 ' + r.heightField
+          + (r.heightRange ? '，高度范围 ' + r.heightRange[0] + '~' + r.heightRange[1] : '') + '，bbox=' + JSON.stringify(r.bbox)
           + (r.categories ? '，着色字段 ' + r.colorField + '（' + r.categories.length + ' 类: ' + r.categories.join('/') + '）' : '')
+          + '；交互式 3D 视图：工作台 3D 页签（该数据为当前图层时联动加载）'
       },
     })
 

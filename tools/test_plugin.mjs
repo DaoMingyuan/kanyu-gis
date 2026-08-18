@@ -178,6 +178,9 @@ async function main() {
   check('host.js kanyu_catalog WMS 分支参数面（bbox/width/height 直通 + urlOnly）',
     hostSrc.includes('args.bbox') && hostSrc.includes('args.urlOnly')
       && hostSrc.includes('仅构造未拉取'));
+  // kanyu_scene3d 高度范围回执（2026-08-18 第三十七轮）：heightRange 增量字段 + 交互视图接力
+  check('host.js kanyu_scene3d 回执含高度范围 + 3D 页签接力指引',
+    hostSrc.includes('heightRange') && hostSrc.includes('高度范围') && hostSrc.includes('工作台 3D 页签'));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -470,6 +473,15 @@ async function main() {
   const s3dNoCat = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
   check('scene3d.data 无 colorField：categories 为 null（契约不漂移）',
     s3dNoCat.ok && s3dNoCat.categories === null && s3dNoCat.colorField === null);
+  // 高度范围摘要（2026-08-18 第三十七轮）：heightRange 增量字段（缺字段归一 10 后累积）
+  check('scene3d.data 高度范围：heightRange [10,120]（缺 height 字段要素归一 10）',
+    s3dNoCat.ok && JSON.stringify(s3dNoCat.heightRange) === '[10,120]',
+    'heightRange=' + JSON.stringify(s3dNoCat.heightRange));
+  const tS3d = tools.get('kanyu_scene3d');
+  const s3dText = tS3d && await tS3d.execute({ path: EXAMPLE, heightField: 'height' });
+  check('动态工具 kanyu_scene3d：回执含高度范围 + 工作台 3D 页签接力指引',
+    typeof s3dText === 'string' && /高度范围 10~120/.test(s3dText) && /工作台 3D 页签/.test(s3dText),
+    String(s3dText).slice(0, 200));
 
   // ⑧ 动态工具抽查（Harness function-calling 面，CLI 依赖）
   if (!STATIC_ONLY) {

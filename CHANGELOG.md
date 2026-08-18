@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.34.0] — 2026-08-18
+
+- **GIS 模式 AI 面整合：`kanyu_scene3d` 回执补高度范围 + 交互视图接力**：
+  `scene3dData` 挤出循环顺手累积 minH/maxH 返回 `heightRange`（纯增量
+  字段，RPC 契约不破坏；缺高度字段要素归一 10 后参与累积）；动态工具
+  回执附「高度范围 min~max」——模型侧可判断挤出量级，并附「交互式 3D
+  视图：工作台 3D 页签（该数据为当前图层时联动加载）」入口指引。至此
+  8 个 kanyu_* 动态工具回执面全部过一轮（query/crs/geoprocess/edit/
+  catalog 三分支/scene3d）。RPC 表不变仍 25。
+- **测试器 +3 断言**（hostSrc 静态契约 + RPC heightRange [10,120] 字段 +
+  动态回执「高度范围 10~120 + 工作台 3D 页签」）；总计 **106/106 全绿**
+  （static 83/83）。
+
 ## [0.33.0] — 2026-08-18
 
 - **GIS 模式 AI 面整合：`kanyu_catalog` WMS 底图分支参数面**：`servicesWms`
