@@ -295,6 +295,15 @@ window.__ModuleLoader__.load({
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      async function undoRedo(dir) {
+        setBusy(true); setOut((dir === 'undo' ? '撤销' : '重做') + '中…')
+        try {
+          // 显式方法名（不做字符串拼接）：两半漂移锁静态可查
+          const r = await hostCall(dir === 'undo' ? 'edit.undo' : 'edit.redo', { path })
+          setOut(fmtJson(r))
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         Field('算子', h('select', { className: 'kyg-input', value: op, onChange: e => { setOp(e.target.value); setArgsText(HINTS[e.target.value] || '{}') } },
@@ -304,7 +313,10 @@ window.__ModuleLoader__.load({
         h('div', { className: 'kyg-row' },
           h('label', { className: 'kyg-hint' },
             h('input', { type: 'checkbox', checked: inPlace, onChange: e => setInPlace(e.target.checked) }), ' 原地覆盖（默认写 .edited.geojson）'),
-          h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: apply2 }, '应用')),
+          h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: apply2 }, '应用'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => undoRedo('undo') }, '撤销'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => undoRedo('redo') }, '重做')),
+        h('div', { className: 'kyg-hint' }, '编辑历史对齐 kanyu-edit 双栈：变更入 undo 栈（容量 64），新变更清空 redo'),
         h(ResultPre, { text: out }),
       )
     }

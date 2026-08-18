@@ -261,57 +261,87 @@ return {
     }
 
     // ------ 能力 6：地理编辑（GeoJSON 在线编辑内核） ------
-    async function editApply(path, op, args, inPlace) {
-      if (!fs) return { ok: false, error: 'fs service 不可用' }
-      if (EDIT_OPS.indexOf(op) < 0) return { ok: false, error: '未知编辑算子: ' + op + '（可用: ' + EDIT_OPS.join('/') + '）' }
-      const p = await procPath(path)
-      if (!/\.(geojson|json)$/i.test(p)) return { ok: false, error: '组件内编辑内核目前仅支持 GeoJSON（其他格式请先经 kanyu data export 转换）' }
-      let text
-      try {
-        const target = await fs.resolve(p)
-        text = await fs.readText(target)
-      } catch (e) { return { ok: false, error: '读取失败: ' + String(e && e.message || e) } }
-      let fc
-      try { fc = JSON.parse(text) } catch (e) { return { ok: false, error: 'GeoJSON 解析失败: ' + String(e && e.message || e) } }
-      if (!fc || fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) {
-        return { ok: false, error: '仅支持 FeatureCollection 根' }
-      }
-      const a = args || {}
+    // 对齐 kanyu-edit 内核范式（crates/kanyu-edit/src/history.rs）：命令逆操作
+    // 双栈——每个变更算子在应用时同步计算结构化逆操作，按源文件键控入 undo 栈
+    // （容量 64、溢出淘汰最旧、新变更清空 redo 栈）；edit.undo/edit.redo 在两栈
+    // 间移动记录并对同一输出文件回写。feature-count 为只读算子，不入栈。
+    const EDIT_HISTORY_CAP = 64
+    const editHistory = new Map() // 源文件路径 -> { undo: [], redo: [] }（记录含 outPath）
+    function historyOf(p) {
+      let h = editHistory.get(p)
+      if (!h) { h = { undo: [], redo: [] }; editHistory.set(p, h) }
+      return h
+    }
+    // 单一变更入口：正/逆向共用。返回 { ok, error?, summary?, inverse? }，
+    // inverse 为结构化逆操作（{ op, args }），仅变更算子产生。
+    // feature-insert / attribute-restore 为逆操作内部算子，不进 EDIT_OPS 公开清单。
+    function applyMutation(fc, op, a) {
       const feats = fc.features
-      let summary = ''
-      if (op === 'feature-count') {
-        return { ok: true, summary: '要素数 ' + feats.length, count: feats.length }
-      } else if (op === 'feature-delete') {
+      if (op === 'feature-delete') {
         const i = Number(a.index)
         if (!(i >= 0 && i < feats.length)) return { ok: false, error: 'index 越界: ' + a.index }
-        feats.splice(i, 1)
-        summary = '删除要素 #' + i + '，余 ' + feats.length
+        const deleted = feats.splice(i, 1)[0]
+        return { ok: true, summary: '删除要素 #' + i + '，余 ' + feats.length,
+          inverse: { op: 'feature-insert', args: { index: i, feature: deleted } } }
+      } else if (op === 'feature-insert') {
+        const i = Math.max(0, Math.min(Number(a.index) || 0, feats.length))
+        if (!a.feature || a.feature.type !== 'Feature') return { ok: false, error: 'feature-insert 需要 feature（GeoJSON Feature 对象）' }
+        feats.splice(i, 0, a.feature)
+        return { ok: true, summary: '插入要素至 #' + i + '，共 ' + feats.length,
+          inverse: { op: 'feature-delete', args: { index: i } } }
       } else if (op === 'feature-add') {
         if (!a.geometry || !a.geometry.type) return { ok: false, error: 'feature-add 需要 geometry（GeoJSON Geometry 对象）' }
         feats.push({ type: 'Feature', geometry: a.geometry, properties: a.properties || {} })
-        summary = '新增 ' + a.geometry.type + ' 要素，共 ' + feats.length
+        return { ok: true, summary: '新增 ' + a.geometry.type + ' 要素，共 ' + feats.length,
+          inverse: { op: 'feature-delete', args: { index: feats.length - 1 } } }
       } else if (op === 'attribute-set') {
         if (!a.field) return { ok: false, error: 'attribute-set 需要 field' }
         const idx = a.index === undefined || a.index === null ? -1 : Number(a.index)
+        const old = []
         let n = 0
         feats.forEach((f, i) => {
           if (idx < 0 || i === idx) {
             if (!f.properties) f.properties = {}
+            old.push([i, a.field in f.properties, f.properties[a.field]])
             f.properties[a.field] = a.value === undefined ? null : a.value
             n++
           }
         })
-        summary = '字段 ' + a.field + ' 已写入 ' + n + ' 个要素'
+        return { ok: true, summary: '字段 ' + a.field + ' 已写入 ' + n + ' 个要素',
+          inverse: { op: 'attribute-restore', args: { field: a.field, old } } }
       } else if (op === 'attribute-delete') {
         if (!a.field) return { ok: false, error: 'attribute-delete 需要 field' }
+        const old = []
         let n = 0
-        feats.forEach(f => { if (f.properties && a.field in f.properties) { delete f.properties[a.field]; n++ } })
-        summary = '字段 ' + a.field + ' 已从 ' + n + ' 个要素删除'
+        feats.forEach((f, i) => {
+          if (f.properties && a.field in f.properties) {
+            old.push([i, true, f.properties[a.field]])
+            delete f.properties[a.field]
+            n++
+          }
+        })
+        return { ok: true, summary: '字段 ' + a.field + ' 已从 ' + n + ' 个要素删除',
+          inverse: { op: 'attribute-restore', args: { field: a.field, old } } }
+      } else if (op === 'attribute-restore') {
+        // old: [[要素号, 原是否存在, 原值], ...]——恢复 attribute-set/delete 前的字段状态
+        for (const [i, existed, val] of a.old || []) {
+          const f = feats[i]
+          if (!f) continue
+          if (!f.properties) f.properties = {}
+          if (existed) f.properties[a.field] = val
+          else delete f.properties[a.field]
+        }
+        // 逆之逆 = 重做时的新鲜逆操作由 redo 路径重算，这里给保守等价物
+        return { ok: true, summary: '字段 ' + a.field + ' 已恢复 ' + (a.old || []).length + ' 个要素',
+          inverse: { op: 'attribute-restore', args: { field: a.field, old: (a.old || []).map(([i]) => {
+            const f = feats[i]
+            return [i, !!(f && f.properties && a.field in f.properties), f && f.properties ? f.properties[a.field] : undefined]
+          }) } } }
       } else if (op === 'vertex-move') {
         const i = Number(a.feature)
         const f = feats[i]
         if (!f) return { ok: false, error: 'feature 越界: ' + a.feature }
-        // ringPath：Polygon 为 [环号]，MultiPolygon 为 [部件号, 环号]
+        // ringPath：Polygon 为 [环号]，MultiPolygon 为 [部件号, 环号]（GeomPath 三级定位）
         let coords = f.geometry && f.geometry.coordinates
         const ringPath = Array.isArray(a.ringPath) ? a.ringPath : [0]
         for (const ri of ringPath) {
@@ -320,15 +350,74 @@ return {
         }
         const vi = Number(a.vertex)
         if (!Array.isArray(coords) || !Array.isArray(coords[vi])) return { ok: false, error: 'vertex 越界: ' + a.vertex }
+        const oldPos = coords[vi].slice()
         coords[vi] = [Number(a.x), Number(a.y)]
-        summary = '要素 #' + i + ' 顶点 ' + vi + ' 已移至 (' + a.x + ', ' + a.y + ')'
+        return { ok: true, summary: '要素 #' + i + ' 顶点 ' + vi + ' 已移至 (' + a.x + ', ' + a.y + ')',
+          inverse: { op: 'vertex-move', args: { feature: i, ringPath, vertex: vi, x: oldPos[0], y: oldPos[1] } } }
       }
-      const outPath = inPlace ? p : p.replace(/\.(geojson|json)$/i, '.edited.geojson')
+      return { ok: false, error: '未知编辑算子: ' + op }
+    }
+    async function editReadFc(p) {
+      let text
+      try {
+        const target = await fs.resolve(p)
+        text = await fs.readText(target)
+      } catch (e) { return { error: '读取失败: ' + String(e && e.message || e) } }
+      try {
+        const fc = JSON.parse(text)
+        if (!fc || fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) return { error: '仅支持 FeatureCollection 根' }
+        return { fc }
+      } catch (e) { return { error: 'GeoJSON 解析失败: ' + String(e && e.message || e) } }
+    }
+    async function editWriteFc(outPath, fc) {
       try {
         const target = await fs.resolve(outPath)
         await fs.writeText(target, JSON.stringify(fc))
-      } catch (e) { return { ok: false, error: '写回失败: ' + String(e && e.message || e) } }
-      return { ok: true, summary, output: outPath, count: feats.length }
+        return true
+      } catch (e) { return false }
+    }
+    async function editApply(path, op, args, inPlace) {
+      if (!fs) return { ok: false, error: 'fs service 不可用' }
+      if (EDIT_OPS.indexOf(op) < 0) return { ok: false, error: '未知编辑算子: ' + op + '（可用: ' + EDIT_OPS.join('/') + '）' }
+      const p = await procPath(path)
+      if (!/\.(geojson|json)$/i.test(p)) return { ok: false, error: '组件内编辑内核目前仅支持 GeoJSON（其他格式请先经 kanyu data export 转换）' }
+      const r = await editReadFc(p)
+      if (r.error) return { ok: false, error: r.error }
+      const fc = r.fc
+      const feats = fc.features
+      const a = args || {}
+      if (op === 'feature-count') {
+        return { ok: true, summary: '要素数 ' + feats.length, count: feats.length }
+      }
+      const m = applyMutation(fc, op, a)
+      if (!m.ok) return m
+      const outPath = inPlace ? p : p.replace(/\.(geojson|json)$/i, '.edited.geojson')
+      if (!(await editWriteFc(outPath, fc))) return { ok: false, error: '写回失败: ' + outPath }
+      // 入 undo 栈（容量淘汰最旧 + 清空 redo），与 kanyu-edit History.push 同语义
+      const h = historyOf(p)
+      h.undo.push({ op, args: a, inverse: m.inverse, outPath, label: m.summary })
+      if (h.undo.length > EDIT_HISTORY_CAP) h.undo.shift()
+      h.redo.length = 0
+      return { ok: true, summary: m.summary, output: outPath, count: feats.length,
+        history: { undo: h.undo.length, redo: h.redo.length } }
+    }
+    async function editUndoRedo(path, dir) {
+      if (!fs) return { ok: false, error: 'fs service 不可用' }
+      const p = await procPath(path)
+      const h = historyOf(p)
+      const stack = dir === 'undo' ? h.undo : h.redo
+      const rec = stack.pop()
+      if (!rec) return { ok: false, error: (dir === 'undo' ? '无可撤销' : '无可重做') + '的编辑记录（' + p + '）' }
+      const r = await editReadFc(rec.outPath)
+      if (r.error) { stack.push(rec); return { ok: false, error: r.error } }
+      const m = dir === 'undo' ? applyMutation(r.fc, rec.inverse.op, rec.inverse.args) : applyMutation(r.fc, rec.op, rec.args)
+      if (!m.ok) { stack.push(rec); return { ok: false, error: '回滚应用失败: ' + m.error } }
+      if (!(await editWriteFc(rec.outPath, r.fc))) { stack.push(rec); return { ok: false, error: '写回失败: ' + rec.outPath } }
+      // undo：记录移入 redo 栈；redo：重算新鲜逆操作后移回 undo 栈
+      if (dir === 'undo') h.redo.push(rec)
+      else h.undo.push({ op: rec.op, args: rec.args, inverse: m.inverse, outPath: rec.outPath, label: rec.label })
+      return { ok: true, summary: (dir === 'undo' ? '已撤销: ' : '已重做: ') + rec.label, output: rec.outPath,
+        history: { undo: h.undo.length, redo: h.redo.length } }
     }
 
     // ------ 能力 7：3D 地理（挤出体数据制备，Client .canvas 等距投影绘制） ------
@@ -418,6 +507,15 @@ return {
     harness.handle('geoprocess.run', async (a) => geoprocessRun(a && a.tool, a && a.input, a && a.input2, a && a.output, a && a.params))
     harness.handle('edit.ops', async () => ({ ok: true, ops: EDIT_OPS }))
     harness.handle('edit.apply', async (a) => editApply(a && a.path, a && a.op, a && a.args, !!(a && a.inPlace)))
+    harness.handle('edit.undo', async (a) => editUndoRedo(a && a.path, 'undo'))
+    harness.handle('edit.redo', async (a) => editUndoRedo(a && a.path, 'redo'))
+    harness.handle('edit.history', async (a) => {
+      const p = await procPath(a && a.path)
+      const h = historyOf(p)
+      return { ok: true, undo: h.undo.length, redo: h.redo.length,
+        undoTop: h.undo.length ? h.undo[h.undo.length - 1].label : null,
+        redoTop: h.redo.length ? h.redo[h.redo.length - 1].label : null }
+    })
     harness.handle('scene3d.data', async (a) => scene3dData(a && a.path, a && a.heightField, a && a.maxFeatures))
 
     // ---------- 动态模型工具（堪舆 AI 能力 → Harness function-calling） ----------
@@ -538,7 +636,7 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核）：feature-count/feature-delete/feature-add/attribute-set/attribute-delete/vertex-move；默认写出 .edited.geojson，inPlace=true 原地修改。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/attribute-set/attribute-delete/vertex-move；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },

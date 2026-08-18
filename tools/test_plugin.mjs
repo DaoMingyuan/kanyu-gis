@@ -131,7 +131,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(path.join('dsh', 'plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（14 个）', rpc.size === 14, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（17 个）', rpc.size === 17, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
 
   // ① 系统自省
@@ -185,6 +185,31 @@ async function main() {
   check('edit.apply attribute-set：写 .edited.geojson', edited.ok && editedExists, edited.summary || edited.error);
   if (editedExists) await fsp.unlink(edited.output); // 清理临时产物
 
+  // ⑥+ 编辑历史（对齐 kanyu-edit 命令逆操作双栈）：apply → undo → redo 闭环
+  const udSrc = path.join(TMP_DIR, 'undo-test.geojson');
+  await fsp.copyFile(path.join(REPO_ROOT, EXAMPLE), udSrc);
+  const udRel = path.relative(REPO_ROOT, udSrc);
+  const a1 = await callRpc('edit.apply', { path: udRel, op: 'attribute-set', args: { field: 'dsh_ud', value: 7 } });
+  check('edit.apply 入 undo 栈（undo:1/redo:0）', a1.ok && a1.history && a1.history.undo === 1 && a1.history.redo === 0,
+    JSON.stringify(a1.history));
+  const u1 = await callRpc('edit.undo', { path: udRel });
+  let fieldGone = false;
+  try { fieldGone = JSON.parse(await fsp.readFile(u1.output, 'utf8')).features.every((f) => !(f.properties && 'dsh_ud' in f.properties)); } catch { /* 断言兜底 */ }
+  check('edit.undo：逆操作回写（字段已移除，undo:0/redo:1）', u1.ok && fieldGone && u1.history.undo === 0 && u1.history.redo === 1,
+    u1.summary || u1.error);
+  const r1 = await callRpc('edit.redo', { path: udRel });
+  let fieldBack = false;
+  try { fieldBack = JSON.parse(await fsp.readFile(r1.output, 'utf8')).features.every((f) => f.properties && f.properties.dsh_ud === 7); } catch { /* 断言兜底 */ }
+  check('edit.redo：正向重放（字段恢复，undo:1/redo:0）', r1.ok && fieldBack && r1.history.undo === 1 && r1.history.redo === 0,
+    r1.summary || r1.error);
+  const u2 = await callRpc('edit.undo', { path: udRel });
+  const a2 = await callRpc('edit.apply', { path: udRel, op: 'feature-delete', args: { index: 0 } });
+  check('新变更清空 redo 栈（kanyu-edit push 语义）', u2.ok && a2.ok && a2.history.redo === 0 && a2.history.undo === 1,
+    JSON.stringify(a2.history));
+  const h1 = await callRpc('edit.history', { path: udRel });
+  check('edit.history：栈深与栈顶标签', h1.ok && h1.undo === 1 && h1.redo === 0 && /删除要素/.test(h1.undoTop),
+    'undoTop=' + h1.undoTop);
+
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
   check('scene3d.data：bbox + 高度提取', s3d.ok && Array.isArray(s3d.bbox) && s3d.count >= 3,
@@ -237,7 +262,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 14 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 17 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping

@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.5.0] — 2026-08-18
+
+- **编辑能力深化：对齐 kanyu-edit 内核范式（命令逆操作双栈）**——`host.js` 编辑段
+  重构为单一变更入口 `applyMutation`（正/逆向共用），每个变更算子应用时同步计算
+  结构化逆操作（feature-delete↔feature-insert、feature-add→feature-delete、
+  attribute-set/delete↔attribute-restore、vertex-move 自逆），按源文件键控入
+  undo 栈（容量 64 淘汰最旧、新变更清空 redo，与 `History.push` 同语义）；
+  新增 `edit.undo` / `edit.redo` / `edit.history` 三个 RPC（RPC 表 14 → 17）。
+- 双客户端（`plugin/client.js` 动态形态 + `pkg/client.js` 静态形态）编辑页签
+  同步加「撤销/重做」按钮与历史语义提示；RPC 方法名显式不拼接（两半漂移锁
+  静态可查——本轮实测锁住一次 `'edit.' + dir` 拼接漂移）。
+- 测试器新增 5 项编辑历史断言（apply 入栈 → undo 逆操作回写字段移除 →
+  redo 正向重放字段恢复 → 新变更清空 redo → edit.history 栈深与栈顶标签），
+  总计 **40/40 断言全绿**；web profile 重装冒烟：health 报 8 工具 + 17 RPC。
+
 ## [0.4.1] — 2026-08-18
 
 - `tools/test_plugin.mjs` 新增 **pkg 静态双面包契约断言组**（23 → 35 断言全绿）：
