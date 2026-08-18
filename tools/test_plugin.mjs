@@ -260,6 +260,12 @@ async function main() {
   const tabsOk = ['catalog', 'data', 'map', 'crs', 'gp', 'edit', 'scene3d', 'about']
     .every((t) => clientSrc.includes(`id: '${t}'`));
   check('client.js 七能力页签 + 关于', tabsOk);
+  // 3D 管线对齐内核 scene3d.rs 软件管线（2026-08-18 第十轮）：
+  // yaw/pitch 视角态、faceVisible 背面剔除、高度归一化 H×0.25、拖拽旋转交互
+  const s3dKeys = ['yaw', 'pitch', 'faceVisible', 'H * 0.25', 'onMouseDown'];
+  check('client.js 3D 管线对齐内核 scene3d.rs（yaw/pitch/背面剔除/高度归一化 0.25/拖拽旋转）',
+    s3dKeys.every((k) => clientSrc.includes(k)),
+    s3dKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -285,6 +291,9 @@ async function main() {
     pkgClientSrc.includes('agentPreset') && pkgClientSrc.includes(`'kanyu-gis'`));
   const dialectClean = !pkgClientSrc.includes('host.call(') && !pkgClientSrc.includes('styles.insert(');
   check('pkg/client.js 无动态沙箱符号调用（host.call(/styles.insert(）', dialectClean);
+  check('pkg/client.js 3D 管线对齐内核 scene3d.rs（与动态半同契约）',
+    s3dKeys.every((k) => pkgClientSrc.includes(k)),
+    s3dKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));

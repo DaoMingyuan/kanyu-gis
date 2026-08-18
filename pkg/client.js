@@ -321,62 +321,89 @@ window.__ModuleLoader__.load({
       )
     }
 
-    // 3D：挤出体场景（canvas 等距投影）
-    function drawScene3d(cv, data) {
+    // 3D：挤出体场景——投影链对齐内核 scene3d.rs 软件管线：
+    // 数据→画布线性映射（view.rs 同式）→ 绕画布中心 yaw 旋转 → sin(pitch) 俯仰压缩
+    // → 高度向上抬升；背面剔除 + 质心纵深排序（远先绘）+ 侧面两档明暗（0.55/0.75）；
+    // 高度归一化 = 画布高 × 0.25 / 最大高度（内核 MAX_HEIGHT_FRAC）；左键拖拽旋转
+    // （yaw += dx*0.01；pitch ∓ 0.3°/px，钳制 30°–45°；默认 yaw=-0.5、pitch=35°）。
+    function drawScene3d(cv, data, view) {
       const g = cv.getContext('2d')
       const W = cv.width, H = cv.height
+      const yaw = view && typeof view.yaw === 'number' ? view.yaw : -0.5
+      const pitchDeg = view && typeof view.pitch === 'number' ? view.pitch : 35
+      const pitch = Math.min(45, Math.max(30, pitchDeg)) * Math.PI / 180
       g.clearRect(0, 0, W, H)
-      g.fillStyle = 'rgba(10,14,22,1)'; g.fillRect(0, 0, W, H)
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H) // 内核约束：地图框背景纯白
       if (!data || !data.bbox || !data.features || data.features.length === 0) {
         g.fillStyle = '#6b7489'; g.font = '12px sans-serif'
         g.fillText('无场景数据（加载 GeoJSON 后绘制挤出体）', 16, 24)
         return
       }
       const b = data.bbox
-      const dx = Math.max(b[2] - b[0], 1e-9), dy = Math.max(b[3] - b[1], 1e-9)
-      const scale = Math.min(W * 0.9 / (dx + dy), H * 1.4 / (dx + dy))
-      let maxH = 1
+      const minx = b[0], miny = b[1], maxx = b[2], maxy = b[3]
+      const spanX = Math.max(maxx - minx, 1e-9), spanY = Math.max(maxy - miny, 1e-9)
+      // 数据 → 画布 2D（view.rs 线性映射，y 轴翻转，留边距居中）
+      const fit = Math.min(W / spanX, H / spanY) * 0.84
+      const offX = (W - spanX * fit) / 2, offY = (H - spanY * fit) / 2
+      const toCanvas = (x, y) => [offX + (x - minx) * fit, offY + (maxy - y) * fit]
+      const cx = W / 2, cy = H / 2
+      // 高度归一化（内核 height_scale：最大高度锚定画布 1/4 高）
+      let maxH = 0
       data.features.forEach(f => { if (f.height > maxH) maxH = f.height })
-      const zPix = H * 0.38 / maxH
-      function proj(x, y, z) {
-        const nx = x - b[0] - dx / 2, ny = y - b[1] - dy / 2
-        return [W / 2 + (nx - ny) * 0.7071 * scale, H * 0.78 - (nx + ny) * 0.5 * scale - z * zPix]
+      const zScale = maxH > 0 ? H * 0.25 / maxH : 0
+      const sY = Math.sin(yaw), cY = Math.cos(yaw), sP = Math.sin(pitch)
+      const rotate = (gx, gy) => { // 绕画布中心（x 右 y 下）
+        const dx = gx - cx, dy = gy - cy
+        return [cx + dx * cY - dy * sY, cy + dx * sY + dy * cY]
       }
-      const feats = data.features.slice().sort((f1, f2) => {
-        const c1 = f1.ring.reduce((s, p) => s + p[0] + p[1], 0)
-        const c2 = f2.ring.reduce((s, p) => s + p[0] + p[1], 0)
-        return c1 - c2
-      })
-      for (const f of feats) {
+      const proj = (x, y, z) => { // 数据坐标 + 高度 → 屏幕点
+        const c0 = toCanvas(x, y), r = rotate(c0[0], c0[1])
+        return [r[0], cy + (r[1] - cy) * sP - z * zScale]
+      }
+      const faceVisible = (a, bq) => { // 背面剔除：旋转后外法线 ny < 0 才朝观众
+        const dx = bq[0] - a[0], dy = -(bq[1] - a[1])
+        return dy * sY + (-dx) * cY < 0
+      }
+      const BASE = [216, 120, 86] // 组件基色（无图层符号化通道，取堪舆暖色）
+      const shade = (k, a) => 'rgba(' + Math.round(BASE[0] * k) + ',' + Math.round(BASE[1] * k) + ',' + Math.round(BASE[2] * k) + ',' + a + ')'
+      // 装配：棱柱（顶面 + 已剔除侧面 + 明暗档）/ 贴地线 / 贴地点
+      const prisms = [], gLines = [], gPoints = []
+      for (const f of data.features) {
         const ring = f.ring
-        const t = Math.min(1, f.height / maxH)
-        const top = 'rgba(' + Math.round(214 - 60 * t) + ',' + Math.round(120 + 60 * t) + ',' + Math.round(90 + 40 * t) + ',.95)'
-        const wall = 'rgba(120,72,56,.88)'
-        if (f.geom === 'Point') {
-          const p = proj(ring[0][0], ring[0][1], f.height)
-          g.fillStyle = top; g.beginPath(); g.arc(p[0], p[1], 3.5, 0, 6.2832); g.fill()
-          continue
+        if (!ring || ring.length === 0) continue
+        if (f.geom === 'Point') { gPoints.push(proj(ring[0][0], ring[0][1], 0)); continue }
+        if (f.geom === 'LineString') { gLines.push(ring.map(p => proj(p[0], p[1], 0))); continue }
+        if (ring.length < 3) continue
+        const ground = ring.map(p => toCanvas(p[0], p[1]))
+        const top = ring.map(p => proj(p[0], p[1], f.height))
+        const sides = []
+        for (let i = 0; i < ground.length - 1; i++) {
+          const a = ground[i], b2 = ground[i + 1]
+          if (!faceVisible(a, b2)) continue
+          // 明暗两档：按边方向的旋转后 x 分量分档（内核 collect_polygon 同式）
+          const dark = ((b2[0] - a[0]) * cY - (b2[1] - a[1]) * sY) > 0
+          sides.push({ q: [proj(ring[i][0], ring[i][1], 0), proj(ring[i + 1][0], ring[i + 1][1], 0), top[i + 1], top[i]], dark })
         }
-        if (f.geom === 'LineString') {
-          g.strokeStyle = top; g.lineWidth = 1.6; g.beginPath()
-          ring.forEach((p, i) => { const q = proj(p[0], p[1], f.height); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]) })
-          g.stroke()
-          continue
-        }
-        // 棱柱：先四壁后顶面
-        g.fillStyle = wall
-        for (let i = 0; i < ring.length - 1; i++) {
-          const a0 = proj(ring[i][0], ring[i][1], 0), a1 = proj(ring[i + 1][0], ring[i + 1][1], 0)
-          const b0 = proj(ring[i][0], ring[i][1], f.height), b1 = proj(ring[i + 1][0], ring[i + 1][1], f.height)
-          g.beginPath(); g.moveTo(a0[0], a0[1]); g.lineTo(a1[0], a1[1]); g.lineTo(b1[0], b1[1]); g.lineTo(b0[0], b0[1]); g.closePath(); g.fill()
-        }
-        g.fillStyle = top; g.strokeStyle = 'rgba(60,30,24,.8)'; g.lineWidth = 0.6
-        g.beginPath()
-        ring.forEach((p, i) => { const q = proj(p[0], p[1], f.height); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]) })
-        g.closePath(); g.fill(); g.stroke()
+        let mx = 0, my = 0
+        ground.forEach(p => { mx += p[0]; my += p[1] })
+        prisms.push({ depth: rotate(mx / ground.length, my / ground.length)[1], top, sides })
       }
-      g.fillStyle = '#9aa4b8'; g.font = '11px sans-serif'
-      g.fillText('堪舆 3D · ' + data.count + ' 要素 · 高度字段 ' + data.heightField, 10, 16)
+      prisms.sort((p1, p2) => p2.depth - p1.depth) // 质心纵深：远 → 近
+      const fillPoly = pts => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill() }
+      for (const pr of prisms) {
+        for (const s of pr.sides) { g.fillStyle = shade(s.dark ? 0.55 : 0.75, 0.92); fillPoly(s.q) }
+        if (pr.top.length >= 3) {
+          g.fillStyle = shade(1, 0.95); g.strokeStyle = 'rgba(60,40,36,.7)'; g.lineWidth = 0.6
+          fillPoly(pr.top); g.stroke()
+        }
+      }
+      g.strokeStyle = shade(0.85, 0.9); g.lineWidth = 1.5
+      for (const ln of gLines) { g.beginPath(); ln.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke() }
+      g.fillStyle = shade(0.85, 0.95)
+      for (const p of gPoints) { g.beginPath(); g.arc(p[0], p[1], 3, 0, 6.2832); g.fill() }
+      g.fillStyle = '#6b7489'; g.font = '11px sans-serif'
+      g.fillText('堪舆 3D · ' + data.count + ' 要素 · 高度字段 ' + data.heightField +
+        ' · 方位角 ' + Math.round(yaw * 180 / Math.PI) + '° 俯仰 ' + Math.round(pitchDeg) + '° · 拖拽旋转', 10, 16)
     }
 
     function Tab3d(props) {
@@ -387,8 +414,21 @@ window.__ModuleLoader__.load({
       const [msg, setMsg] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       const [cv, setCv] = React.useState(null)
+      // 视角状态（对齐内核 Scene3D：yaw 弧度 / pitch 角度制，拖拽调节）
+      const [view, setView] = React.useState({ yaw: -0.5, pitch: 35 })
+      const dragRef = React.useRef(null)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
-      React.useEffect(() => { if (cv && data) drawScene3d(cv, data) }, [cv, data])
+      React.useEffect(() => { if (cv && data) drawScene3d(cv, data, view) }, [cv, data, view])
+      function onDown(e) { dragRef.current = { x: e.clientX, y: e.clientY } }
+      function onMove(e) {
+        const d = dragRef.current
+        if (!d) return
+        const dx = e.clientX - d.x, dy = e.clientY - d.y
+        d.x = e.clientX; d.y = e.clientY
+        // 内核交互契约：yaw += dx*0.01；pitch 钳制 30°–45°
+        setView(v => ({ yaw: v.yaw + dx * 0.01, pitch: Math.min(45, Math.max(30, v.pitch - dy * 0.3)) }))
+      }
+      function onUp() { dragRef.current = null }
       async function load() {
         setBusy(true); setMsg('制备场景数据中…')
         try {
@@ -404,7 +444,11 @@ window.__ModuleLoader__.load({
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: load }, '加载 3D 场景')),
         h('div', { className: 'kyg-hint' }, msg),
-        h('canvas', { ref: setCv, className: 'kyg-canvas', width: 540, height: 360 }),
+        h('canvas', {
+          ref: setCv, className: 'kyg-canvas', width: 540, height: 360,
+          style: { cursor: 'grab', touchAction: 'none' },
+          onMouseDown: onDown, onMouseMove: onMove, onMouseUp: onUp, onMouseLeave: onUp,
+        }),
       )
     }
 

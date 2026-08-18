@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.7.0] — 2026-08-18
+
+- **3D 能力对齐内核 scene3d.rs 软件管线**：双客户端（plugin/client.js 动态形态 +
+  pkg/client.js 静态形态）`drawScene3d` 重写——废弃固定 45° 等距投影，移植内核
+  投影链（数据→画布线性映射 view.rs 同式 → 绕中心 yaw 旋转 → sin(pitch) 俯仰压缩
+  → 高度抬升）、`face_visible` 背面剔除、质心纵深排序（远先绘）、侧面两档明暗
+  （0.55/0.75）、高度归一化画布高 × 0.25（MAX_HEIGHT_FRAC）、纯白底约束、
+  线/点贴地投影；Tab3d 新增视角态（yaw=-0.5 / pitch=35° 默认）+ 左键拖拽旋转
+  （yaw += dx*0.01，pitch 钳制 30°–45°），角标实时显示方位角/俯仰。
+- 测试器新增 2 项 3D 管线契约断言（双客户端各一：yaw/pitch/faceVisible/0.25/
+  onMouseDown 全命中），总计 **42/42 断言全绿**（static 33/33）；web profile 重装
+  冒烟：health 200（8 工具/17 RPC）+ bundle 200 含新管线代码。
+
 ## [0.6.0] — 2026-08-18
 
 - **组件仓 CI 落地**：`tools/test_plugin.mjs` 新增 `--static` 零依赖模式——跳过一切

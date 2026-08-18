@@ -420,7 +420,7 @@ return {
         history: { undo: h.undo.length, redo: h.redo.length } }
     }
 
-    // ------ 能力 7：3D 地理（挤出体数据制备，Client .canvas 等距投影绘制） ------
+    // ------ 能力 7：3D 地理（挤出体数据制备，Client canvas 软件 3D 管线绘制） ------
     async function scene3dData(path, heightField, maxFeatures) {
       if (!fs) return { ok: false, error: 'fs service 不可用' }
       const p = await procPath(path)
@@ -651,7 +651,7 @@ return {
 
     textTool({
       name: 'kanyu_scene3d',
-      description: '3D 地理：从 GeoJSON 制备挤出体场景数据（按高度字段拉伸棱柱，等距投影），返回场景摘要；完整交互式 3D 视图在组件 Client 面板。',
+      description: '3D 地理：从 GeoJSON 制备挤出体场景数据（按高度字段拉伸棱柱，yaw/pitch 斜投影 + 背面剔除 + 纵深排序，对齐内核 scene3d.rs 软件管线），返回场景摘要；完整交互式 3D 视图在组件 Client 面板。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         heightField: { type: 'string', description: '高度字段名（默认 height，无该字段取 10）' },
