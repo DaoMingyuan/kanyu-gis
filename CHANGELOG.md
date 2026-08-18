@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.27.0] — 2026-08-18
+
+- **GIS 模式 AI 面整合：`kanyu_crs` reproject 回执补命中计数**：动态工具
+  `action=reproject` 带 `output` 成功时，返回「投影变换完成：from → to，
+  N 要素 → 已写出: path（可继续作为 path 检视/渲染/编辑）」——此前仅
+  「已输出: path」无计数。要素数解析自 stderr「已写出 N 个要素 → path」
+  契约（与客户端 runReproject 同源）。output 参数说明同步注明落盘回执。
+  RPC 表不变仍 25（纯动态工具文本面）。
+- **测试器 +2 断言**（kanyu_crs reproject+output 计数回执 + 落盘文件
+  一致、hostSrc 确认文本契约键）；总计 **90/90 全绿**（static 70/70）。
+
 ## [0.26.0] — 2026-08-18
 
 - **GIS 模式 AI 面整合：`kanyu_data` query 落盘分支**：动态工具

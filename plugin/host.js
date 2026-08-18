@@ -967,7 +967,7 @@ return {
         path: { type: 'string', description: 'reproject 时的数据文件路径' },
         from: { type: 'string', description: '源 CRS（如 EPSG:4326）' },
         to: { type: 'string', description: '目标 CRS（如 EPSG:4547）' },
-        output: { type: 'string', description: '输出路径（可选，缺省打印）' },
+        output: { type: 'string', description: 'reproject 输出路径（可选；给出则落盘 GeoJSON 并回执要素数，缺省打印）' },
       },
       async execute(args) {
         if (args.action === 'search') {
@@ -982,7 +982,15 @@ return {
         const r = await crsReproject(args.path, args.from, args.to, args.output)
         const j = parseJsonLoose(r.stdout)
         if (j) return JSON.stringify(j).slice(0, 4000)
-        return r.ok ? (args.output ? '已输出: ' + args.output : r.stdout.slice(0, 4000)) : '失败: ' + r.stderr.slice(0, 2000)
+        // 落盘分支：stdout 为空，要素数在 stderr「已写出 N 个要素 → path」，
+        // 模型侧回执带计数（对齐客户端 runReproject 语义）
+        if (r.ok && args.output) {
+          const m = /已写出 (\d+) 个要素 → (.+)/.exec(r.stderr || '')
+          return '投影变换完成：' + (args.from || '?') + ' → ' + (args.to || '?') + '，'
+            + (m ? m[1] : '?') + ' 要素 → 已写出: ' + (m ? m[2].trim() : args.output)
+            + '（可继续作为 path 检视/渲染/编辑）'
+        }
+        return r.ok ? r.stdout.slice(0, 4000) : '失败: ' + r.stderr.slice(0, 2000)
       },
     })
 

@@ -161,6 +161,9 @@ async function main() {
   // kanyu_data query 落盘分支（2026-08-18 第二十九轮）：模型侧确认文本非空串
   check('host.js kanyu_data query 落盘分支含命中确认文本（对齐客户端 runQuery 语义）',
     /查询完成：命中/.test(hostSrc));
+  // kanyu_crs reproject 回执计数（2026-08-18 第三十轮）：模型侧确认文本带要素数
+  check('host.js kanyu_crs reproject 落盘分支含计数确认文本（对齐客户端 runReproject 语义）',
+    /投影变换完成：/.test(hostSrc));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -262,6 +265,15 @@ async function main() {
     check('动态工具 kanyu_data(query+output)：命中计数确认文本 + 落盘文件要素一致（非空串）',
       typeof kdText === 'string' && /查询完成：命中 \d+ 要素 → 已写出: /.test(kdText) && kdWritten > 0,
       String(kdText).slice(0, 100) + ' written=' + kdWritten);
+    // kanyu_crs reproject 回执计数（2026-08-18 第三十轮，CLI 依赖）：模型侧对齐 runReproject 语义
+    const tCrs = tools.get('kanyu_crs');
+    const kcOut = path.join(TMP_DIR, 'kanyu-crs-reproject.geojson');
+    const kcText = tCrs && await tCrs.execute({ action: 'reproject', path: EXAMPLE, from: 'EPSG:4326', to: 'EPSG:4490', output: kcOut });
+    let kcWritten = -1;
+    try { kcWritten = JSON.parse(await fsp.readFile(kcOut, 'utf8')).features.length; } catch { /* 解析失败即 -1 */ }
+    check('动态工具 kanyu_crs(reproject+output)：计数回执（4326 → 4490，4 要素）+ 落盘文件一致',
+      typeof kcText === 'string' && /投影变换完成：EPSG:4326 → EPSG:4490，4 要素 → 已写出: /.test(kcText) && kcWritten === 4,
+      String(kcText).slice(0, 100) + ' written=' + kcWritten);
   }
 
   // ③ 地图面板（能力 1，CLI 依赖）
