@@ -807,10 +807,12 @@ window.__ModuleLoader__.load({
       const [argsText, setArgsText] = React.useState('{}')
       const [inPlace, setInPlace] = React.useState(false)
       const [topoMode, setTopoMode] = React.useState(false) // 拓扑模式：拖拽改写 topo-move（共享顶点一次同移）
-      // 绘制挖洞/点选打断（2026-08-18 第六十三轮）：画布点击攒点——挖洞=多点成环
-      // hole-add（目标=属性表选中行，否则 #0），打断=单击落点 line-split；
+      // 绘制挖洞/点选打断/绘制新要素（2026-08-18 第六十三/六十四轮）：画布点击
+      // 攒点——挖洞=多点成环 hole-add（目标=属性表选中行，否则 #0），打断=单击
+      // 落点 line-split，绘制点=单击即 feature-add Point，绘制线/面=攒点应用
+      // feature-add LineString/Polygon（面自动闭合）；
       // drawRef 攒数据坐标（state 异步不可用于事件链，对齐 vertDrag ref 范式）
-      const [drawMode, setDrawMode] = React.useState('') // '' | 'hole' | 'split'
+      const [drawMode, setDrawMode] = React.useState('') // '' | 'hole' | 'split' | 'addPoint' | 'addLine' | 'addPolygon'
       const drawRef = React.useRef([])
       const [drawN, setDrawN] = React.useState(0)
       const [out, setOut] = React.useState('')
@@ -915,11 +917,12 @@ window.__ModuleLoader__.load({
         const m = mapRef.current
         if (!m) return
         const pq = vPos(e)
-        // 绘制模式分派：挖洞攒点 / 打断单击落点（跳过顶点拖拽拾取）
+        // 绘制模式分派：挖洞/线面攒点，打断单击落点，绘制点单击即成（跳过顶点拖拽拾取）
         if (drawMode) {
           const xy = m.unproj(pq[0], pq[1])
           const rx = Math.round(xy[0] * 1e6) / 1e6, ry = Math.round(xy[1] * 1e6) / 1e6
           if (drawMode === 'split') { doSplitPoint(rx, ry); return }
+          if (drawMode === 'addPoint') { doAddPoint(rx, ry); return }
           drawRef.current = drawRef.current.concat([[rx, ry]])
           setDrawN(drawRef.current.length)
           drawOverlay()
@@ -978,9 +981,38 @@ window.__ModuleLoader__.load({
         const gd = cvE.getContext('2d')
         gd.strokeStyle = '#2D6A5E'; gd.lineWidth = 2; gd.beginPath()
         pts.forEach((p, i2) => { const q = mapRef.current.proj(p); if (i2 === 0) gd.moveTo(q[0], q[1]); else gd.lineTo(q[0], q[1]) })
-        if (drawMode === 'hole' && pts.length > 2) gd.closePath()
+        if ((drawMode === 'hole' || drawMode === 'addPolygon') && pts.length > 2) gd.closePath()
         gd.stroke()
         for (const p of pts) { const q = mapRef.current.proj(p); gd.fillStyle = '#2D6A5E'; gd.fillRect(q[0] - 3, q[1] - 3, 6, 6) }
+      }
+      // 绘制新要素（feature-add 画布化，壳层 edit.rs 绘制会话语义）：点单击即成，
+      // 线 ≥2 点 / 面 ≥3 点（自动闭合）攒点应用；属性空表待属性页签补录
+      async function doAddPoint(rx, ry) {
+        setBusy(true); setOut('绘制点 (' + rx + ', ' + ry + ')…')
+        try {
+          const r = await hostCall('edit.apply', { path, op: 'feature-add',
+            args: { geometry: { type: 'Point', coordinates: [rx, ry] } }, inPlace })
+          setOut(fmtJson(r))
+          await afterEdit(r)
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
+      async function applyDrawNew() {
+        const pts = drawRef.current
+        const isPoly = drawMode === 'addPolygon'
+        const minN = isPoly ? 3 : 2
+        if (pts.length < minN) { setOut((isPoly ? '面' : '线') + '至少需要 ' + minN + ' 个顶点（当前 ' + pts.length + '）'); return }
+        const geometry = isPoly
+          ? { type: 'Polygon', coordinates: [pts.concat([pts[0]])] }
+          : { type: 'LineString', coordinates: pts }
+        setBusy(true); setOut('绘制' + (isPoly ? '面' : '线') + '应用中（' + pts.length + ' 点）…')
+        try {
+          const r = await hostCall('edit.apply', { path, op: 'feature-add', args: { geometry }, inPlace })
+          setOut(fmtJson(r))
+          if (r && r.ok) { drawRef.current = []; setDrawN(0) }
+          await afterEdit(r)
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
       }
       // 编辑写回联动刷新（与 vUp 同语义）：产出接力当前路径 + 版本号广播 + 几何重载
       async function afterEdit(r) {
@@ -1108,14 +1140,29 @@ window.__ModuleLoader__.load({
             drawMode === 'hole' ? '退出挖洞绘制' : '绘制挖洞'),
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy, onClick: () => toggleDraw('split') },
             drawMode === 'split' ? '退出点选打断' : '点选打断'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy, onClick: () => toggleDraw('addPoint') },
+            drawMode === 'addPoint' ? '退出绘制点' : '绘制点'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy, onClick: () => toggleDraw('addLine') },
+            drawMode === 'addLine' ? '退出绘制线' : '绘制线'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy, onClick: () => toggleDraw('addPolygon') },
+            drawMode === 'addPolygon' ? '退出绘制面' : '绘制面'),
           drawMode === 'hole' && drawN >= 3
             ? h('button', { className: 'kyg-btn', disabled: busy, onClick: applyHole }, '应用挖洞（' + drawN + ' 点）') : null,
-          drawMode === 'hole' && drawN > 0
+          (drawMode === 'addLine' && drawN >= 2) || (drawMode === 'addPolygon' && drawN >= 3)
+            ? h('button', { className: 'kyg-btn', disabled: busy, onClick: applyDrawNew },
+                '应用绘制' + (drawMode === 'addPolygon' ? '面' : '线') + '（' + drawN + ' 点）') : null,
+          drawMode && drawN > 0
             ? h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy,
                 onClick: () => { drawRef.current = []; setDrawN(0); drawOverlay() } }, '清除攒点') : null) : null,
         drawMode ? h('div', { className: 'kyg-hint' }, drawMode === 'hole'
           ? '挖洞绘制：画布逐点点击 ≥3 点后「应用挖洞」（目标=属性表选中行，否则要素 #0；hole-add 自动闭合 + 面内校验）'
-          : '点选打断：单击线要素落点即 line-split（目标=属性表选中行，否则要素 #0；投影最近线段吸附顶点）') : null,
+          : drawMode === 'split'
+            ? '点选打断：单击线要素落点即 line-split（目标=属性表选中行，否则要素 #0；投影最近线段吸附顶点）'
+            : drawMode === 'addPoint'
+              ? '绘制点：单击画布落点即 feature-add Point（属性空表待属性页签补录）'
+              : drawMode === 'addLine'
+                ? '绘制线：逐点点击 ≥2 点后「应用绘制线」（feature-add LineString）'
+                : '绘制面：逐点点击 ≥3 点后「应用绘制面」（feature-add Polygon，自动闭合）') : null,
         h(ResultPre, { text: out }),
       )
     }

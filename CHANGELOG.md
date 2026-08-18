@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.60.0] — 2026-08-18
+
+- **feature-add 画布化（第六十四轮，壳层 edit.rs 绘制会话语义进画布）**：
+  双端 client.js 编辑画布绘制模式扩三种——「绘制点」单击落点即
+  feature-add Point；「绘制线」≥2 点 /「绘制面」≥3 点（自动闭合）攒点
+  应用 feature-add LineString/Polygon；覆盖层预闭合预览与挖洞共用
+  drawRef/drawOverlay 骨架，afterEdit 联动刷新统一。属性空表待属性
+  页签补录（hint 注明）。
+- 测试器 183→**185** / static 147→**149**（+2 双端画布化契约键）；
+  3080 生产桥 feature-add Polygon 实测通过（5 要素，undo:1）。
+
 ## [0.59.0] — 2026-08-18
 
 - **挖洞/打断画布交互（第六十三轮，两算子进编辑画布）**：双端 client.js

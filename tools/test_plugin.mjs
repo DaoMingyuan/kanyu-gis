@@ -901,6 +901,11 @@ async function main() {
   check('client.js 挖洞/打断画布交互（drawMode 分派 + 攒点覆盖层 + 两算子接线）',
     editDrawKeys.every((k) => clientSrc.includes(k)),
     editDrawKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // feature-add 画布化（2026-08-18 第六十四轮）：绘制点/线/面新要素
+  const editAddKeys = ["'addPoint'", "'addLine'", "'addPolygon'", 'doAddPoint', 'applyDrawNew', '绘制点', '绘制线', '绘制面', '应用绘制'];
+  check('client.js feature-add 画布化（绘制点/线/面三模式 + doAddPoint/applyDrawNew 接线）',
+    editAddKeys.every((k) => clientSrc.includes(k)),
+    editAddKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -1018,6 +1023,9 @@ async function main() {
   check('pkg/client.js 挖洞/打断画布交互（与动态半同契约）',
     editDrawKeys.every((k) => pkgClientSrc.includes(k)),
     editDrawKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js feature-add 画布化（与动态半同契约）',
+    editAddKeys.every((k) => pkgClientSrc.includes(k)),
+    editAddKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
