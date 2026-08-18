@@ -405,6 +405,33 @@ function TabEdit(props) {
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
+  // 属性单元格编辑（壳层 attrtable.rs/edit.rs 语义）：data.preview 加载 →
+  // 点选行 → 字段/新值 → edit.apply attribute-set
+  const [attrs, setAttrs] = React.useState(null)
+  const [attrIdx, setAttrIdx] = React.useState(-1)
+  const [attrField, setAttrField] = React.useState('')
+  const [attrValue, setAttrValue] = React.useState('')
+  async function loadAttrs() {
+    setBusy(true); setOut('加载属性表…')
+    try {
+      const r = await host.call('data.preview', { path, limit: 50 })
+      if (r && r.ok) { setAttrs(r); setAttrIdx(-1); setOut('属性表: ' + r.fields.length + ' 字段 · ' + r.total + ' 行（点选行后写单元格）') }
+      else setOut('属性表加载失败: ' + (r && r.error || '未知'))
+    } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+    setBusy(false)
+  }
+  async function applyAttr() {
+    let v = attrValue
+    try { v = JSON.parse(attrValue) } catch (e) { /* 非 JSON 按字符串写入 */ }
+    setBusy(true); setOut('单元格写入中…')
+    try {
+      const r = await host.call('edit.apply', { path, op: 'attribute-set', args: { index: attrIdx, field: attrField, value: v }, inPlace })
+      setOut(fmtJson(r)); if (r && r.ok) setAttrs(null)
+    } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+    setBusy(false)
+  }
+  const thS = { textAlign: 'left', padding: '3px 8px', borderBottom: '1px solid rgba(128,128,128,.4)', position: 'sticky', top: 0, background: 'rgba(128,128,128,.12)', whiteSpace: 'nowrap' }
+  const tdS = { padding: '2px 8px', borderBottom: '1px solid rgba(128,128,128,.15)', whiteSpace: 'nowrap', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }
   return h('div', null,
     Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
     Field('算子', h('select', { className: 'kyg-input', value: op, onChange: e => { setOp(e.target.value); setArgsText(HINTS[e.target.value] || '{}') } },
@@ -418,6 +445,21 @@ function TabEdit(props) {
       h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => undoRedo('undo') }, '撤销'),
       h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => undoRedo('redo') }, '重做')),
     h('div', { className: 'kyg-hint' }, '编辑历史对齐 kanyu-edit 双栈：变更入 undo 栈（容量 64），新变更清空 redo'),
+    h('div', { className: 'kyg-hint' }, '—— 属性单元格编辑 ——'),
+    h('div', { className: 'kyg-row' },
+      h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: loadAttrs }, '加载属性表'),
+      attrs ? h('span', { className: 'kyg-sel' }, attrIdx >= 0 ? '选中要素 #' + attrIdx : '点选下方行') : null),
+    attrs ? h('div', { className: 'kyg-table-wrap', style: { overflow: 'auto', maxHeight: '180px', border: '1px solid rgba(128,128,128,.3)', borderRadius: '4px', margin: '6px 0' } },
+      h('table', { style: { borderCollapse: 'collapse', fontSize: '11px', width: '100%' } },
+        h('thead', null, h('tr', null, [h('th', { key: '#', style: thS }, '#')].concat(attrs.fields.map(f => h('th', { key: f, style: thS }, f))))),
+        h('tbody', null, attrs.rows.map((row, i) => h('tr', {
+          key: i, onClick: () => setAttrIdx(i),
+          style: { cursor: 'pointer', background: i === attrIdx ? 'rgba(127,212,168,.15)' : undefined },
+        }, [h('td', { key: '#', style: tdS }, i)].concat(row.map((c, j) => h('td', { key: j, style: tdS }, c)))))))) : null,
+    attrs ? h('div', { className: 'kyg-row' },
+      h('input', { className: 'kyg-input', style: { maxWidth: '30%' }, value: attrField, placeholder: '字段名', onChange: e => setAttrField(e.target.value) }),
+      h('input', { className: 'kyg-input', value: attrValue, placeholder: '新值（JSON 可解析则按类型写入）', onChange: e => setAttrValue(e.target.value) }),
+      h('button', { className: 'kyg-btn', disabled: busy || attrIdx < 0 || !attrField, onClick: applyAttr }, '写入单元格')) : null,
     h(ResultPre, { text: out }),
   )
 }

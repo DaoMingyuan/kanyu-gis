@@ -50,7 +50,7 @@ kanyu introspect --json              # 机器可读
 - **面板侧 21 RPC**（工作台页签 ↔ Host 半；静态形态经 `/kanyu-gis/call` 桥）：`ping` / `introspect` / `catalog.list` / `services.discover` / `services.fetch` / `services.wms` / `data.info` / `data.query` / `data.validate` / `data.preview` / `render.map` / `crs.presets` / `crs.reproject` / `geoprocess.list` / `geoprocess.run` / `edit.ops` / `edit.apply` / `edit.undo` / `edit.redo` / `edit.history` / `scene3d.data`。
 - **GIS 工作台**：会话头部「🧭 堪舆GIS」按钮 + 七页签浮层（目录/数据/地图/坐标/处理/编辑/3D/关于），随 kanyu-gis preset 联动显示（会话 `agentPreset` 快照门控，切走即隐藏）。
 - **编辑内核**：对齐 kanyu-edit 命令逆操作双栈——变更算子应用时算结构化逆操作入 undo 栈（容量 64、新变更清 redo），撤销/重做经 `edit.undo`/`edit.redo`（工作台编辑页签有按钮）。
-- **组件验证面**：`node dsh/tools/test_plugin.mjs`（56 断言：RPC/工具/七能力/编辑双栈闭环/3D 管线契约/符号化/属性表预览/目录五分类/服务链接发现+拉取+WMS 底图/pkg 双面包契约 + RPC 桥实测；`--static` 为无 CLI 的 CI 模式 45 断言）；`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets`（preset 可加载性旁路校验，含运行时同款 name 判定）；`bash dsh/sync-local.sh`（**每次更新后必跑**：preset 回灌 + 校验 + 插件重装一键化，运行中的 dsh web 实例须重启方生效）。
+- **组件验证面**：`node dsh/tools/test_plugin.mjs`（59 断言：RPC/工具/七能力/编辑双栈闭环/3D 管线契约/符号化/属性表预览/目录五分类/服务链接发现+拉取+WMS 底图/属性单元格编辑/workspace-write 指引/pkg 双面包契约 + RPC 桥实测；`--static` 为无 CLI 的 CI 模式 48 断言）；`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets`（preset 可加载性旁路校验，含运行时同款 name 判定）；`bash dsh/sync-local.sh`（**每次更新后必跑**：preset 回灌 + 校验 + 插件重装一键化，运行中的 dsh web 实例须重启方生效）。
 
 ## 依赖方向（改前先确认不违反）
 

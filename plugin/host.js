@@ -422,12 +422,20 @@ return {
         return { fc }
       } catch (e) { return { error: 'GeoJSON 解析失败: ' + String(e && e.message || e) } }
     }
+    // 写失败提示规范化：DSH fs 服务 workspace-write 模式只许写会话工作区内
+    //（3080 桥实测：读放行、写报 file access denied）——给出可操作指引而非裸错误。
+    function writeHint(e) {
+      const m = String(e && e.message || e)
+      return m.indexOf('workspace-write') >= 0
+        ? m + '（DSH fs 服务 workspace-write 模式：仅会话工作区内可写——请改用工作区内输出路径，或由拉取/CLI 产物先在工作区生成副本再编辑）'
+        : m
+    }
     async function editWriteFc(outPath, fc) {
       try {
         const target = await fs.resolve(outPath)
         await fs.writeText(target, JSON.stringify(fc))
-        return true
-      } catch (e) { return false }
+        return null
+      } catch (e) { return writeHint(e) }
     }
     async function editApply(path, op, args, inPlace) {
       if (!fs) return { ok: false, error: 'fs service 不可用' }
@@ -445,7 +453,8 @@ return {
       const m = applyMutation(fc, op, a)
       if (!m.ok) return m
       const outPath = inPlace ? p : p.replace(/\.(geojson|json)$/i, '.edited.geojson')
-      if (!(await editWriteFc(outPath, fc))) return { ok: false, error: '写回失败: ' + outPath }
+      const werr = await editWriteFc(outPath, fc)
+      if (werr) return { ok: false, error: '写回失败: ' + werr }
       // 入 undo 栈（容量淘汰最旧 + 清空 redo），与 kanyu-edit History.push 同语义
       const h = historyOf(p)
       h.undo.push({ op, args: a, inverse: m.inverse, outPath, label: m.summary })
@@ -465,7 +474,8 @@ return {
       if (r.error) { stack.push(rec); return { ok: false, error: r.error } }
       const m = dir === 'undo' ? applyMutation(r.fc, rec.inverse.op, rec.inverse.args) : applyMutation(r.fc, rec.op, rec.args)
       if (!m.ok) { stack.push(rec); return { ok: false, error: '回滚应用失败: ' + m.error } }
-      if (!(await editWriteFc(rec.outPath, r.fc))) { stack.push(rec); return { ok: false, error: '写回失败: ' + rec.outPath } }
+      const werr2 = await editWriteFc(rec.outPath, r.fc)
+      if (werr2) { stack.push(rec); return { ok: false, error: '写回失败: ' + werr2 } }
       // undo：记录移入 redo 栈；redo：重算新鲜逆操作后移回 undo 栈
       if (dir === 'undo') h.redo.push(rec)
       else h.undo.push({ op: rec.op, args: rec.args, inverse: m.inverse, outPath: rec.outPath, label: rec.label })
@@ -629,7 +639,7 @@ return {
         return { ok: true, source: reqUrl, output: fs.processPath ? fs.processPath(target) : out,
           count: fc.features.length }
       } catch (e) {
-        return { ok: false, error: '落盘失败: ' + String(e && e.message || e) }
+        return { ok: false, error: '落盘失败: ' + writeHint(e) }
       }
     }
 

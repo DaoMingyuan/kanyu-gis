@@ -1,5 +1,23 @@
 # dsh/ 组件变更记录
 
+## [0.15.0] — 2026-08-18
+
+- **编辑域深化：属性单元格编辑（壳层 attrtable.rs/edit.rs 语义）**：双客户端
+  编辑页签新增「加载属性表 → 点选行 → 字段/新值 → 写入单元格」闭环
+  （复用 `data.preview` 行矩阵 + `edit.apply attribute-set`；新值 JSON 可
+  解析则按类型写入，否则按字符串；写成功后表格收起待重载）。无新增 RPC
+  （表仍 21 项）。
+- **workspace-write 写拒绝可操作指引（3080 实测排障入档）**：DSH fs 服务
+  生产侧为 workspace-write 模式——工作区外**读放行、写拒绝**
+  （`file access denied under workspace-write mode`）。新增 `writeHint`
+  统一规范化 edit/services 写失败消息（附中文可操作指引：改用工作区内
+  输出路径，或先由拉取/CLI 产物在工作区生成副本）。editWriteFc 改返回
+  错误串（原布尔丢弃了原因）。
+- **测试器 +3 断言**（双端属性编辑区契约 + host writeHint 指引），总计
+  **59/59 全绿**（static 48/48）。3080 桥端到端实测：工作区外写回给
+  可操作指引；工作区内 attribute-set 闭环（写入 → preview 复查值 →
+  undo 栈 +1）。
+
 ## [0.14.0] — 2026-08-18
 
 - **WMS GetMap 底图预览（壳层 services.rs v2 语义）**：新增 `services.wms`
