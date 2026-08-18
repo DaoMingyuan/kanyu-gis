@@ -144,7 +144,7 @@ async function main() {
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
   check('RPC 注册齐全（32 个）', rpc.size === 32, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
-  check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
+  check('动态工具注册齐全（9 个 kanyu_*）', tools.size === 9, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
   check('host.js 写回失败含 workspace-write 可操作指引（3080 实测 fs 只读工作区外）',
@@ -767,7 +767,9 @@ async function main() {
     { feature: 0, ringPath: [0], vertex: 1, x: 6, y: 1 }, { feature: 99, x: 0, y: 0 }] } });
   check('vertices-move 校验：任一项越界整体不变更（先校验后写入）', !vmBad.ok && /feature 越界/.test(vmBad.error || ''), vmBad.error || '');
 
+  if (!STATIC_ONLY) {
   // ⑥+++++++++ 面切割 WASM 技能通道（2026-08-18 第六十六轮）：split_polygons guest（geo Buffer+BooleanOps）+ skill.run RPC
+  // （CLI 依赖——kanyu skill run 出口；--static CI 模式整组跳过）
   const cutSrc = path.join(TMP_DIR, 'split-poly-test.geojson');
   await fsp.writeFile(cutSrc, JSON.stringify({ type: 'FeatureCollection', features: [
     { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] }, properties: { name: '地块A' } },
@@ -785,6 +787,15 @@ async function main() {
   check('skill.run 面切割校验：未横贯中文报错（技能业务错误直通 stderr）', !skMiss.ok && /未劈开/.test(skMiss.stderr || ''), String(skMiss.stderr || '').slice(0, 120));
   const skNoCut = await callRpc('skill.run', { skill: 'dsh/skills/split_polygons.wasm', input: cutRel });
   check('skill.run 校验：无切割线输入中文报错（guest _role 契约）', !skNoCut.ok && /未找到切割线/.test(skNoCut.stderr || ''), String(skNoCut.stderr || '').slice(0, 120));
+
+  // 模型侧 kanyu_skill 工具（2026-08-18 第六十七轮）：面切割入 AI 工具面（8→9 动态工具）
+  const tSkill = tools.get('kanyu_skill');
+  const skToolOut = path.join(TMP_DIR, 'split-poly-tool.geojson');
+  const skText = tSkill && await tSkill.execute({ skill: 'dsh/skills/split_polygons.wasm', input: cutRel, output: path.relative(REPO_ROOT, skToolOut), cutLine: [[5, -1], [5, 11]] });
+  check('动态工具 kanyu_skill：面切割回执含产出清单（2 要素 → path，可接力）',
+    typeof skText === 'string' && /技能 .* 完成/.test(skText) && /产出: 2 要素 → /.test(skText) && /接力/.test(skText),
+    String(skText).slice(0, 160));
+  }
 
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
@@ -1153,8 +1164,8 @@ async function main() {
   };
   const pkgMod = await import(pathToFileURL(path.join(REPO_ROOT, dshPath('pkg', 'index.js'))).href);
   pkgMod.apply(adapterCtx, { hostSource: path.join(REPO_ROOT, dshPath('plugin', 'host.js')) });
-  check('pkg/index.js apply：8 工具 + /kanyu-gis 前缀路由注册',
-    staticToolCount === 8 && route && route.kind === 'prefix' && route.path === '/kanyu-gis',
+  check('pkg/index.js apply：9 工具 + /kanyu-gis 前缀路由注册',
+    staticToolCount === 9 && route && route.kind === 'prefix' && route.path === '/kanyu-gis',
     'tools=' + staticToolCount + ' route=' + (route && route.path));
   // 模拟一次 POST /kanyu-gis/call（node:http req/res 最小等价面）；
   // --static 模式用纯本地方法 crs.presets（ping 需 kanyu CLI，CI 无此前提）

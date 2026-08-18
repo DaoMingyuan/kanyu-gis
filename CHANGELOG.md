@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.63.0] — 2026-08-18
+
+- **kanyu_skill 模型工具（第六十七轮，面切割入 AI 工具面）**：动态工具
+  8→9 新增 kanyu_skill——skill/input/output/cutLine 四参直挂 skillRun
+  （WASM 技能沙箱语义入模型 function-calling 面），回执附「已写出 N 要素
+  → path」产出清单 + 接力提示（与 kanyu_geoprocess writesSummary 同契约）。
+- 测试器 195→**196** / static 156（+1 kanyu_skill 回执实测）；
+  **CI 修复**：skill.run 三断言补 STATIC_ONLY 门控（kanyu skill run 为
+  CLI 依赖——六十六轮组件仓 CI e3f052e 红于此，组件仓 static 无 kanyu
+  二进制；159→156 为门控后真实静态计数）。
+
 ## [0.62.0] — 2026-08-18
 
 - **面切割 WASM 技能通道（第六十六轮，内核 geo BooleanOps 经技能沙箱进组件）**：
@@ -14,8 +25,9 @@
   滞留 node_modules 的坑入档注释）；双端 client.js 编辑画布「面切割」模式
   （cutPoly 攒切割线 ≥2 点应用，产出落 dsh/output 接力当前图层 + 版本号
   广播 + 几何重载）。
-- 测试器 190→**195** / static 154→**159**（+3 功能实测：劈分属性继承 /
-  未横贯报错 / 无切割线报错，+2 双端画布契约键）；3080 生产桥实测通过
+- 测试器 190→**195** / static 154→**156**（+3 功能实测：劈分属性继承 /
+  未横贯报错 / 无切割线报错，+2 双端画布契约键；三功能实测为 CLI 依赖，
+  static CI 模式按 STATIC_ONLY 门控跳过——六十七轮补正）；3080 生产桥实测通过
   （两面横贯其一 → 3 要素，_part 0/1 属性继承）。
 
 ## [0.61.0] — 2026-08-18

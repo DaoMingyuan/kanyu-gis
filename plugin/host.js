@@ -4,7 +4,7 @@
 // 职责：
 //   1. 以 kanyu CLI（堪舆内核脊髓）为执行后端，向 Client 半提供 Package 私有
 //      JSON RPC（harness.handle）；
-//   2. 向 DSH 模型注册 8 个动态工具（harness.registerTool），把堪舆的 AI 能力
+//   2. 向 DSH 模型注册 9 个动态工具（harness.registerTool），把堪舆的 AI 能力
 //      （原壳层 LocalDriver/OpenAiDriver 意图面）整合进 Harness 的
 //      function-calling 代理循环 —— 自然语言 → 工具调用由 Harness 模型驱动，
 //      组件只暴露语义对齐内核注册表的工具面；
@@ -1361,7 +1361,7 @@ return {
 
     // ---------- 动态模型工具（堪舆 AI 能力 → Harness function-calling） ----------
     // 原壳层 LocalDriver 意图匹配/OpenAiDriver function calling 的能力面，
-    // 在 DSH 组件中收敛为 8 个注册进 Harness 工具注册表的一等工具，
+    // 在 DSH 组件中收敛为 9 个注册进 Harness 工具注册表的一等工具，
     // 由 Harness 模型路由直接驱动（单一事实来源：kanyu 内核注册表）。
 
     function textTool(def) {
@@ -1570,6 +1570,25 @@ return {
         const j = parseJsonLoose(r.stdout)
         const head = r.ok ? '工具 ' + args.tool + ' 完成' : '工具 ' + args.tool + ' 失败(exit ' + r.exitCode + ')'
         return head + writesSummary(r.ok ? r.stderr : '') + '\n' + (j ? JSON.stringify(j).slice(0, 4000) : (r.ok ? r.stdout.slice(0, 4000) : r.stderr.slice(0, 2000)))
+      },
+    })
+
+    textTool({
+      name: 'kanyu_skill',
+      description: 'WASM 技能沙箱（总规 §4.5「以 WASM 为技能」，kanyu skill run 出口）：内置 split_polygons 面切割——cutLine 切割线横贯面要素劈分（geo Buffer+BooleanOps 差集，属性继承 + _part 序号；切割线须横贯目标面，原数据不动、产出新图层）；技能为 wasmtime 沙箱 WASM 组件（无 IO、fuel 配额），单一事实源 guest 源码在 dsh/skills/。',
+      parameters: {
+        skill: { type: 'string', required: true, description: '技能路径（内置：dsh/skills/split_polygons.wasm）' },
+        input: { type: 'string', required: true, description: '输入图层路径（FeatureCollection GeoJSON）' },
+        output: { type: 'string', description: '输出路径（可选，缺省落 dsh/output/）' },
+        cutLine: { type: 'array', description: '切割线坐标 [[x,y],...]（split_polygons 必填，≥2 点，注入 _role=cut 走临时输入）' },
+      },
+      async execute(args) {
+        const r = await skillRun(args.skill, args.input, args.output, args.cutLine)
+        const writes = r.ok ? [...String(r.stderr || '').matchAll(/已写出 (\d+) 个要素 → (.+)/g)] : []
+        const head = r.ok ? '技能 ' + args.skill + ' 完成' : '技能 ' + args.skill + ' 失败(exit ' + r.exitCode + ')'
+        return head
+          + (writes.length ? '\n产出: ' + writes.map(w => w[1] + ' 要素 → ' + w[2].trim()).join('；') + '（可继续作为 input/path 接力检视/渲染/编辑）' : '')
+          + '\n' + (r.ok ? (r.stdout || '').slice(0, 4000) : (r.stderr || '').slice(0, 2000))
       },
     })
 
