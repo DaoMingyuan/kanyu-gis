@@ -192,7 +192,7 @@ return {
       return { ok: true, root, count: items.length, items }
     }
 
-    // ------ 能力 2：数据读取（info / query / validate） ------
+    // ------ 能力 2：数据读取（info / query / validate / preview 属性表） ------
     async function dataInfo(path) {
       const p = await procPath(path)
       return runKanyu(['data', 'info', '--json', q(p)])
@@ -207,6 +207,34 @@ return {
     async function dataValidate(path) {
       const p = await procPath(path)
       return runKanyu(['data', 'validate', '--json', q(p)])
+    }
+    // 属性表预览（纯 fs 读面，对齐壳层 attrtable.rs 的只读表语义：字段并集 +
+    // 前 N 行；不经 CLI——--static 模式与无 CLI 环境亦可覆盖；GeoJSON 先行）
+    async function dataPreview(path, limit) {
+      if (!fs) return { ok: false, error: 'fs service 不可用' }
+      const p = await procPath(path)
+      let fc
+      try {
+        const target = await fs.resolve(p)
+        fc = JSON.parse(await fs.readText(target))
+      } catch (e) { return { ok: false, error: '读取/解析失败（属性表目前支持 GeoJSON）: ' + String(e && e.message || e) } }
+      const feats = fc && Array.isArray(fc.features) ? fc.features : []
+      const cap = Math.min(Number(limit) || 50, 200)
+      const fields = []
+      const seen = new Set()
+      for (const f of feats) {
+        const props = f && f.properties
+        if (!props) continue
+        for (const k of Object.keys(props)) if (!seen.has(k)) { seen.add(k); fields.push(k) }
+        if (fields.length >= 40) break
+      }
+      const cell = (v) => {
+        if (v === null || v === undefined) return ''
+        const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
+        return s.length > 80 ? s.slice(0, 77) + '…' : s
+      }
+      const rows = feats.slice(0, cap).map((f) => fields.map((k) => cell(f && f.properties ? f.properties[k] : null)))
+      return { ok: true, source: p, fields, rows, shown: rows.length, total: feats.length }
     }
 
     // ------ 能力 1：地图面板（离屏渲染 → base64 PNG 回传 Client） ------
@@ -512,6 +540,7 @@ return {
     harness.handle('data.info', async (a) => dataInfo(a && a.path))
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
+    harness.handle('data.preview', async (a) => dataPreview(a && a.path, a && a.limit))
     harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
@@ -574,14 +603,22 @@ return {
 
     textTool({
       name: 'kanyu_data',
-      description: '读取 GIS 数据：action=info 检视（格式/要素数/字段清单）、query 属性查询（filter 如 "height > 50"）、validate 宗地 TXT 质检。',
+      description: '读取 GIS 数据：action=info 检视（格式/要素数/字段清单）、query 属性查询（filter 如 "height > 50"）、validate 宗地 TXT 质检、preview 属性表预览（字段并集 + 前 N 行，纯读面不经 CLI）。',
       parameters: {
-        action: { type: 'string', required: true, description: 'info | query | validate' },
+        action: { type: 'string', required: true, description: 'info | query | validate | preview' },
         path: { type: 'string', required: true, description: '数据文件路径' },
         filter: { type: 'string', description: 'query 时的过滤表达式："field op value"，op ∈ == != > >= < <=' },
         output: { type: 'string', description: 'query 结果输出路径（GeoJSON，可选）' },
+        limit: { type: 'number', description: 'preview 时的行数上限（默认 50，最大 200）' },
       },
       async execute(args) {
+        if (args.action === 'preview') {
+          const r = await dataPreview(args.path, args.limit)
+          if (!r.ok) return '失败: ' + r.error
+          const text = '字段(' + r.fields.length + '): ' + r.fields.join(', ') + '\n前 ' + r.shown + '/' + r.total + ' 行:\n'
+            + r.rows.map((row) => row.join(' | ')).join('\n')
+          return text.slice(0, 5000)
+        }
         const r = args.action === 'query' ? await dataQuery(args.path, args.filter || '', args.output)
           : args.action === 'validate' ? await dataValidate(args.path)
           : await dataInfo(args.path)

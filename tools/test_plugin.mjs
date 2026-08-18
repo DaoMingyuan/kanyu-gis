@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（17 个）', rpc.size === 17, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（18 个）', rpc.size === 18, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
@@ -172,6 +172,16 @@ async function main() {
     const val = await callRpc('data.validate', { path: EXAMPLE });
     check('data.validate：执行不抛错（GeoJSON 非宗地 TXT，宽松断言）', typeof val.exitCode === 'number');
   }
+  // 属性表预览（纯 fs 读面，两种模式皆覆盖；2026-08-18 第十三轮）
+  const prev = await callRpc('data.preview', { path: EXAMPLE, limit: 50 });
+  check('data.preview：字段并集 + 行矩阵（4/4 行，含 height 字段）',
+    prev.ok && prev.total === 4 && prev.shown === 4 && prev.fields.includes('height')
+      && Array.isArray(prev.rows) && prev.rows.length === 4 && prev.rows.every((r) => r.length === prev.fields.length),
+    'fields=' + (prev.fields || []).join(','));
+  const tData = tools.get('kanyu_data');
+  const prevText = tData && await tData.execute({ action: 'preview', path: EXAMPLE });
+  check('动态工具 kanyu_data(preview)：属性表文本（字段头 + 行）',
+    typeof prevText === 'string' && /字段\(/.test(prevText) && /height/.test(prevText));
 
   // ③ 地图面板（能力 1，CLI 依赖）
   if (!STATIC_ONLY) {
@@ -319,7 +329,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 17 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 18 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping

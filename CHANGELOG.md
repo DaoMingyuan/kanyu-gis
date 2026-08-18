@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.10.0] — 2026-08-18
+
+- **数据域深化：属性表预览**：新增 `data.preview` RPC（纯 fs 读面，不经
+  CLI——读 GeoJSON，字段并集上限 40、行上限 min(limit,200)、单元格 ≤80
+  字符，返回 fields/rows/shown/total），RPC 表 17→**18**；`kanyu_data`
+  动态工具新增 `preview` action（字段清单 + 前行文本，截 5000 字符）。
+- **双客户端数据页签属性表**：`plugin/client.js` 与 `pkg/client.js`
+  同步新增「属性表」按钮 + `kyg-table-wrap` 滚动容器原生 table 渲染
+  （sticky 表头）。
+- **测试器 +2 断言**（`data.preview` 行数/字段契约 + `kanyu_data(preview)`
+  动态工具文本），RPC 计数断言改 18；总计 **48/48 全绿**（static 37/37）。
+  3080 桥端到端实测：`data.preview` 返回 buildings.geojson 5 字段 4 行、
+  limit=3 截断正确。
+
 ## [0.9.0] — 2026-08-18
 
 - **地图面板接入属性驱动符号化（StyleRule 对齐 kanyu-render）**：`render.map`

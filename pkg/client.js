@@ -140,24 +140,42 @@ window.__ModuleLoader__.load({
       const [path, setPath] = React.useState(store.path)
       const [filter, setFilter] = React.useState('')
       const [out, setOut] = React.useState('')
+      const [table, setTable] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
       async function call(method, args) {
-        setBusy(true); setOut('执行中…')
+        setBusy(true); setOut('执行中…'); setTable(null)
         try {
           const r = await hostCall(method, args)
           setOut(fmtJson(r))
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // 属性表预览（data.preview，纯读面；对齐壳层 attrtable 语义）
+      async function preview() {
+        setBusy(true); setOut('读取属性表…'); setTable(null)
+        try {
+          const r = await hostCall('data.preview', { path, limit: 50 })
+          if (r && r.ok) { setTable(r); setOut('属性表: ' + r.fields.length + ' 字段 · 前 ' + r.shown + '/' + r.total + ' 行') }
+          else setOut('失败: ' + (r && r.error || '未知'))
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
+      const thS = { textAlign: 'left', padding: '3px 8px', borderBottom: '1px solid rgba(128,128,128,.4)', position: 'sticky', top: 0, background: 'rgba(128,128,128,.12)', whiteSpace: 'nowrap' }
+      const tdS = { padding: '2px 8px', borderBottom: '1px solid rgba(128,128,128,.15)', whiteSpace: 'nowrap', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => call('data.info', { path }) }, '检视'),
-          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => call('data.validate', { path }) }, '质检')),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: () => call('data.validate', { path }) }, '质检'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: preview }, '属性表')),
         Field('过滤', h('input', { className: 'kyg-input', value: filter, placeholder: '如 height > 50', onChange: e => setFilter(e.target.value) })),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: busy || !path || !filter, onClick: () => call('data.query', { path, filter }) }, '查询')),
+        table ? h('div', { className: 'kyg-table-wrap', style: { overflow: 'auto', maxHeight: '220px', border: '1px solid rgba(128,128,128,.3)', borderRadius: '4px', margin: '6px 0' } },
+          h('table', { style: { borderCollapse: 'collapse', fontSize: '11px', width: '100%' } },
+            h('thead', null, h('tr', null, table.fields.map(f => h('th', { key: f, style: thS }, f)))),
+            h('tbody', null, table.rows.map((row, i) => h('tr', { key: i }, row.map((c, j) => h('td', { key: j, style: tdS }, c))))))) : null,
         h(ResultPre, { text: out }),
       )
     }
