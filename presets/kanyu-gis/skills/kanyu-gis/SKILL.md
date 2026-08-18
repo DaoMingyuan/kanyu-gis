@@ -1,7 +1,7 @@
 ---
 name: kanyu-gis
 description: Kanyu (堪舆) GIS 工作区能力地图。当任务涉及 E:\BaiduSyncdisk\堪舆GIS 的地图渲染、GIS 数据读取、坐标系框架、工程目录、地理处理工具、图层编辑、3D 场景、MCP 服务器，或需要定位模块/crate、选择验证命令、执行 kanyu CLI 时，加载本技能再动手。
-metadata: { type: domain, version: "1.0", workspace: "E:\BaiduSyncdisk\\堪舆GIS" }
+metadata: { type: domain, version: "1.0", workspace: 'E:/BaiduSyncdisk/堪舆GIS' }
 ---
 
 # Kanyu (堪舆) GIS 能力地图

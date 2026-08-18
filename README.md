@@ -9,7 +9,7 @@
 |------|------|
 | `plugin/host.js` | 组件 Host 半（宿主进程侧）：以 `kanyu` CLI 为执行后端，暴露 Package 私有 JSON RPC（`harness.handle`），并向 DSH 模型注册 8 个 `kanyu_*` 动态工具（`harness.registerTool`）——堪舆原壳层 LocalDriver/OpenAiDriver 意图面在 Harness function-calling 代理循环中的整合形态 |
 | `plugin/client.js` | 组件 Client 半（浏览器侧）：DSH Web GUI「堪舆 GIS 工作台」，会话头部按钮 + 全局浮层七页签（目录/数据/地图/坐标/处理/编辑/3D/关于）+ cordis 卡片，全部经 `host.call` 走 Host 半 |
-| `presets/kanyu-gis/` | GIS 模式 agent preset：`preset.yml`（发现元数据）+ `agent.cordis.yml`（组合：模型路由/服务/工具/技能）+ `skills/kanyu-gis/SKILL.md`（七域能力地图技能） |
+| `presets/kanyu-gis/` | GIS 模式 agent preset：`preset.yml`（发现元数据）+ `agent.cordis.yml`（代理平面组合：persona/工具面/plan-mode/compaction/delegation 组 + skill-filesystem 技能注入，形态与 local-hybrid 同方言）+ `skills/kanyu-gis/SKILL.md`（七域能力地图技能） |
 | `examples/` | 组件演示数据（GeoJSON 小样例） |
 | `tools/verify_preset.mjs` | preset 可加载性旁路校验（与 DSH 发现库同判定链）；用法：`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets` |
 | `sync-preset.sh` | 把仓库内 preset 源同步到本机 DSH 安装区（`~/.dsh/.agent-presets/kanyu-gis/`）并触发校验 |

@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.3.1] — 2026-08-18
+
+- **GIS 模式 preset 活体挂载验证通过（web profile）**：`agentPreset.list` API 实测
+  初版组合判 broken（"row 1 names no plugin"），按 local-hybrid 方言重写
+  `agent.cordis.yml` 为合法代理平面组合（persona + 工具面 + plan-mode/compaction/
+  delegation 三 isolate 组 + skill-filesystem 技能注入；删除误写的 model 路由行、
+  file-operations/process 服务行、memory/system-prompt 特殊行与不存在的
+  dsh-tool-read/write/edit/glob/grep/read-image 包名）。
+- 修复 `skills/kanyu-gis/SKILL.md` frontmatter 双引号标量内 `\B` 非法 YAML 转义
+  （技能文件被宿主静默丢弃、会话技能目录为空）；修为正斜杠路径后
+  `session.create(agentPreset=kanyu-gis)` + `skill.list` 实证技能入目。
+- `verify_preset.mjs` 补强：补「每行必须携带插件 name」判定（对齐运行时
+  invariant.js `entryListProblem`），仓库侧旁路校验可提前拦截 roster 级 broken。
+- preset.yml 描述笔误修正（工程目录目录树 → 工程目录树）。
+
 ## [0.3.0] — 2026-08-18
 
 - 新增 `pkg/` 常驻静态插件适配器：`new Function` 求值 `plugin/host.js` 单一事实源，

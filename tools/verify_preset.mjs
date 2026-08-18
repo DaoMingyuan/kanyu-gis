@@ -75,6 +75,12 @@ function walkRows(doc, label = '') {
       if (row.id !== undefined && row.id !== null && ID_RE.test(String(row.id)) === false) {
         issues.push(`${label2} (${JSON.stringify(row.id)}): id leaves the pattern`);
       }
+      // 与运行时 invariant.js entryListProblem 同款判定：每行必须是携带
+      // 插件 `name` 字符串的映射（组行递归进自己的 config 行列表）——
+      // roster 对缺 name 的行判 broken（"row N names no plugin"）。
+      if (typeof row.name !== 'string' || row.name === '') {
+        issues.push(`${label2} (${JSON.stringify(row?.id)}): names no plugin (a "name" string is required)`);
+      }
       if (row.patch !== undefined) {
         if (Array.isArray(row.patch)) {
           issues.push(`${label2} (${JSON.stringify(label2)}): static patch rows are inert — presets mount from the row list; patches only apply in an overlay composition`);
