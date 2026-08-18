@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.8.0] — 2026-08-18
+
+- **GIS 模式接入 kanyu-mcp（堪舆内核 AI 意图面整合）**：preset 组合新增
+  `mcp-kanyu` 行（`@deepseek-ai/dsh-mcp-client`，stdio 长驻子进程
+  `kanyu mcp serve`），kanyu-mcp 的 17 stable 工具以 `mcp__kanyu__*` 限定名
+  进会话模型工具面，与组件 8 个 `kanyu_*` 动态工具互补（动态工具 = 一次性
+  CLI 调用；MCP 桥 = 长驻 stdio 会话）。`failOnStartupError` 默认 false，
+  kanyu.exe 不在 PATH 时会话仍可加载。
+- web profile 实证：roster（agentPreset.list）kanyu-gis 无 broken；
+  `session.create(agentPreset=kanyu-gis)` 成功；实例日志见 9 处
+  「kanyu-mcp: MCP server 监听 stdio」启动行、零错误（HTTP API 无会话
+  工具清单端点，模型侧 `mcp__kanyu__*` 入目以首局对话实测终验）。
+- SKILL.md 组件形态章节登记 MCP 桥工具面；验证面计数同步 42/33 断言。
+
 ## [0.7.1] — 2026-08-18
 
 - **修复「组件界面未正确加载」（用户报告）**：根因为运行中的 `dsh web`（3080）
