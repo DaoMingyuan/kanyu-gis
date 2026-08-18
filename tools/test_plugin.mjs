@@ -359,6 +359,18 @@ async function main() {
     const tGp = tools.get('kanyu_geoprocess');
     const gpText = tGp && await tGp.execute({ tool: 'stats', input: EXAMPLE });
     check('动态工具 kanyu_geoprocess(stats)：返回统计文本', typeof gpText === 'string' && /完成/.test(gpText));
+    // 注册表全库分支（2026-08-18 第二十四轮）：白名单外 id 走 toolbox.run，
+    // input 便捷映射 layer；mean_coordinates 为 tooldef 注册表独产工具。
+    const meanOut = path.join(TMP_DIR, 'mean-coords.geojson');
+    const gpReg = tGp && await tGp.execute({ tool: 'mean_coordinates', input: EXAMPLE, output: meanOut });
+    let meanFeat = 0;
+    try { meanFeat = JSON.parse(await fsp.readFile(meanOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
+    check('动态工具 kanyu_geoprocess(mean_coordinates)：注册表分支输出 1 要素',
+      typeof gpReg === 'string' && /注册表全库/.test(gpReg) && meanFeat === 1,
+      String(gpReg).slice(0, 120) + ' features=' + meanFeat);
+    const gpBad = tGp && await tGp.execute({ tool: 'nonexistent_tool', input: EXAMPLE });
+    check('动态工具 kanyu_geoprocess(未知 id)：注册表中文报错不静默',
+      typeof gpBad === 'string' && /未知工具/.test(gpBad), String(gpBad).slice(0, 120));
     const tCat = tools.get('kanyu_catalog');
     const catText = tCat && await tCat.execute({ dir: dshPath('examples'), depth: 1 });
     check('动态工具 kanyu_catalog：目录清单文本', typeof catText === 'string' && /GEOJSON/.test(catText));

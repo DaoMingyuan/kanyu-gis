@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.21.0] — 2026-08-18
+
+- **GIS 模式 AI 面整合：`kanyu_geoprocess` 加注册表分支**：动态工具执行双轨
+  分流——精选 13 白名单走 GP_TOOLS（`kanyu analysis` 出口）不变；白名单外
+  id 走 `toolbox.run` 注册表分支（`kanyu tool run` 出口，core::tooldef 37
+  工具全库），`input` 便捷映射 `layer`、注册表参数经 `params` 键值透传
+  （第二输入键名各异——overlay/join/values/points/layer2，不猜，引导模型
+  按参数表具名传）。工具描述更新为双轨发现面。模型侧处理域至此覆盖全库。
+- **测试器 +2 断言**（mean_coordinates 注册表分支输出 1 要素 + 未知 id
+  中文报错不静默）；总计 **72/72 全绿**（static 57/57）。RPC 表不变仍 25。
+- 3080 桥实测：mean_coordinates stdout 直出均值点（工作区外写拒绝为既有
+  workspace-write 边界，产图层工具在生产桥应省 output 走 stdout 或写实例
+  工作区内路径）。
+
 ## [0.20.0] — 2026-08-18
 
 - **双客户端处理页签工具箱全库表单**：新增 `ToolboxPanel`（动态/静态双端同步）

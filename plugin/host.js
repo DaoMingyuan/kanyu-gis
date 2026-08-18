@@ -957,15 +957,28 @@ return {
 
     textTool({
       name: 'kanyu_geoprocess',
-      description: '地理处理工具箱（对齐 QGIS/ArcGIS 语义，kanyu analysis 内核）：buffer/dissolve/simplify/centroid/convexhull/deleteholes/explode/overlay/sjoin/zonal/stats/measure/topology。',
+      description: '地理处理工具箱（对齐 QGIS/ArcGIS 语义）：精选 13 工具 buffer/dissolve/simplify/centroid/convexhull/deleteholes/explode/overlay/sjoin/zonal/stats/measure/topology（kanyu analysis 出口）；tool 给注册表 id 则走 core::tooldef 37 工具全库（kanyu tool 出口，注册表参数经 params 键值透传，键名以 toolbox.list/`kanyu tool list --json` 参数表为准，如 mean_coordinates/bounding_boxes/merge/split_by_field/create_grid）。',
       parameters: {
-        tool: { type: 'string', required: true, description: '工具 id：' + GP_TOOLS.map(t => t.id).join('/') },
-        input: { type: 'string', required: true, description: '输入图层路径' },
-        input2: { type: 'string', description: '第二输入图层（overlay/sjoin/zonal 必填）' },
+        tool: { type: 'string', required: true, description: '工具 id：精选 ' + GP_TOOLS.map(t => t.id).join('/') + '；或 tooldef 注册表全库 id' },
+        input: { type: 'string', required: true, description: '输入图层路径（注册表分支自动映射为 layer 参数）' },
+        input2: { type: 'string', description: '第二输入图层（精选面 overlay/sjoin/zonal 必填；注册表分支请经 params 给具名键）' },
         output: { type: 'string', description: '输出路径（可选，缺省落 dsh/output/）' },
-        params: { type: 'object', additionalProperties: true, description: '工具参数键值（如 {"distance": 100}）' },
+        params: { type: 'object', additionalProperties: true, description: '工具参数键值（如 {"distance": 100}；注册表分支按参数表键名，如 {"predicate":"intersects"}）' },
       },
       async execute(args) {
+        // 双轨分流：精选 13 白名单走 GP_TOOLS（参数形状对齐 kanyu analysis）；
+        // 其余 id 走 tooldef 注册表全库（toolbox.run → kanyu tool run）。
+        if (!GP_TOOLS.some(t => t.id === args.tool)) {
+          const params = Object.assign({}, args.params)
+          // 便捷映射：input → layer（params 未显式给 layer 时）；第二输入
+          // 注册表键名各异（overlay/join/values/points/layer2），不猜——
+          // 引导模型按参数表具名传 params。
+          if (args.input && params.layer === undefined) params.layer = args.input
+          const r = await toolboxRun(args.tool, params, args.output)
+          const j = parseJsonLoose(r.stdout)
+          const head = r.ok ? '工具 ' + args.tool + ' 完成（注册表全库）' : '工具 ' + args.tool + ' 失败(exit ' + r.exitCode + ')'
+          return head + '\n' + (j ? JSON.stringify(j).slice(0, 4000) : (r.ok ? r.stdout.slice(0, 4000) : r.stderr.slice(0, 2000)))
+        }
         const r = await geoprocessRun(args.tool, args.input, args.input2, args.output, args.params)
         const j = parseJsonLoose(r.stdout)
         const head = r.ok ? '工具 ' + args.tool + ' 完成' : '工具 ' + args.tool + ' 失败(exit ' + r.exitCode + ')'
