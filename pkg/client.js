@@ -945,21 +945,32 @@ window.__ModuleLoader__.load({
         setView(v => ({ yaw: v.yaw + dx * 0.01, pitch: Math.min(45, Math.max(30, v.pitch - dy * 0.3)) }))
       }
       function onUp() { dragRef.current = null }
-      async function load() {
+      async function load(p) {
+        const usePath = p || path
         setBusy(true); setMsg('制备场景数据中…')
         try {
-          const r = await hostCall('scene3d.data', { path, heightField: hf, maxFeatures: 300, colorField: cf || undefined })
+          const r = await hostCall('scene3d.data', { path: usePath, heightField: hf, maxFeatures: 300, colorField: cf || undefined })
           if (r && r.ok) { setData(r); setMsg(r.count + '/' + r.total + ' 要素 · bbox ' + fmtJson(r.bbox, 200)) }
           else setMsg('失败: ' + (r && r.error || '未知'))
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // 联动重载（2026-08-18 第四十一轮）：已加载过时，跟随当前图层切换
+      // （store.path 变化）或同路径内容变更（store.rev 递增）自动重载场景；未加载不自动制备
+      const auto3dRef = React.useRef({ path: '', rev: -1 })
+      React.useEffect(() => {
+        const a = auto3dRef.current
+        if (!data) { a.path = store.path; a.rev = store.rev; return }
+        if (store.path === a.path && store.rev === a.rev) return
+        a.path = store.path; a.rev = store.rev
+        if (store.path) load(store.path)
+      }, [store.path, store.rev, data])
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         Field('高度字段', h('input', { className: 'kyg-input', value: hf, onChange: e => setHf(e.target.value) })),
         Field('着色字段', h('input', { className: 'kyg-input', value: cf, onChange: e => setCf(e.target.value), placeholder: '可选：分类着色（如 usage）；留空单色基色' })),
         h('div', { className: 'kyg-row' },
-          h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: load }, '加载 3D 场景')),
+          h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => load() }, '加载 3D 场景')),
         h('div', { className: 'kyg-hint' }, msg),
         h('canvas', {
           ref: setCv, className: 'kyg-canvas', width: 540, height: 360,
