@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（18 个）', rpc.size === 18, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（19 个）', rpc.size === 19, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
@@ -169,6 +169,13 @@ async function main() {
       && (cat.dbItems || []).some((i) => i.ext === 'kyu')
       && (cat.dataItems || []).every((i) => i.ext !== 'kdb' && i.ext !== 'kyu'),
     'cats=' + catNames.join('/') + ' db=' + (cat.dbItems || []).length + ' data=' + (cat.dataItems || []).length);
+  // 服务链接：WFS GetCapabilities 最小提取（离线 xml 路径，两种模式皆覆盖；2026-08-18 第十五轮）
+  const capsXml = await fsp.readFile(path.join(REPO_ROOT, dshPath('examples', 'wfs_capabilities.xml')), 'utf8');
+  const svc = await callRpc('services.discover', { xml: capsXml });
+  check('services.discover：GetCapabilities 解析（命名空间剥离 + 实体反转义 + 缺 Name 块跳过）',
+    svc.ok && svc.count === 2 && svc.layers[0].name === 'demo:buildings'
+      && svc.layers[0].title === '示例建筑 & 设施' && svc.layers[1].name === 'demo:roads',
+    'count=' + svc.count + ' names=' + (svc.layers || []).map((l) => l.name).join(','));
   if (!STATIC_ONLY) {
     const info = await callRpc('data.info', { path: EXAMPLE });
     check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
@@ -307,6 +314,11 @@ async function main() {
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
     catKeys.every((k) => clientSrc.includes(k)),
     catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 服务链接发现表单（2026-08-18 第十五轮）：services.discover + 发现图层
+  const svcKeys = ['services.discover', '发现图层', 'GetCapabilities'];
+  check('client.js 目录页签服务链接发现表单（services.discover + 发现图层）',
+    svcKeys.every((k) => clientSrc.includes(k)),
+    svcKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -341,10 +353,13 @@ async function main() {
   check('pkg/client.js 目录页签五分类区（与动态半同契约）',
     catKeys.every((k) => pkgClientSrc.includes(k)),
     catKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 目录页签服务链接发现表单（与动态半同契约）',
+    svcKeys.every((k) => pkgClientSrc.includes(k)),
+    svcKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 18 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 19 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping

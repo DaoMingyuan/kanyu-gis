@@ -21,7 +21,7 @@
 | 能力 | 组件工具 | kanyu 侧对应物 |
 |------|----------|----------------|
 | 地图面板 | `kanyu_render` | `kanyu render map`（晨山/夜观星，PNG/SVG） |
-| GIS 数据目录读取 | `kanyu_catalog` / `kanyu_data` | 五分类工程目录（壳层 catalog.rs 范式）+ `kanyu data info/query/validate` + `data.preview` 属性表（纯 fs）+ 格式注册表 |
+| GIS 数据目录读取 | `kanyu_catalog` / `kanyu_data` | 五分类工程目录（壳层 catalog.rs 范式）+ WFS 服务链接发现（services.discover）+ `kanyu data info/query/validate` + `data.preview` 属性表（纯 fs）+ 格式注册表 |
 | 坐标框架 | `kanyu_crs` | `kanyu data reproject`（EPSG 全库） |
 | 工程目录 | Client 目录页签 | `catalog.list` RPC（扩展名矩阵对齐 `format.rs`） |
 | 地理处理 | `kanyu_geoprocess` | `kanyu analysis <13 工具>`（QGIS 语义） |

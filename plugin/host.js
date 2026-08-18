@@ -531,6 +531,57 @@ return {
       }
     }
 
+    // ------ 能力 4 延伸：服务链接（WFS GetCapabilities 图层发现，对齐壳层 services.rs） ------
+    // parseCapabilities 为壳层同名纯函数的 JS 移植：`<FeatureType>` 块内首个
+    // Name/Title 文本提取 + 实体反转义 + 命名空间前缀剥离（不引 XML 库——
+    // 目标文档结构扁平，主流 WFS 1.1/2.0 足够；完整解析无收益）。
+    function xmlUnescape(s) {
+      return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+    }
+    function extractBlocks(xml, local) {
+      const out = []
+      const re = new RegExp('<(?:[\\w.-]+:)?' + local + '(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w.-]+:)?' + local + '>', 'g')
+      let m
+      while ((m = re.exec(xml))) out.push(m[1])
+      return out
+    }
+    function parseCapabilities(xml) {
+      const out = []
+      for (const block of extractBlocks(xml, 'FeatureType')) {
+        const names = extractBlocks(block, 'Name')
+        if (!names.length) continue
+        const name = xmlUnescape(names[0].trim())
+        if (!name) continue
+        const titles = extractBlocks(block, 'Title')
+        out.push({ name, title: titles.length ? xmlUnescape(titles[0].trim()) : null })
+      }
+      return out
+    }
+    async function servicesDiscover(url, xml) {
+      // 离线解析路径（测试/调试）：直接给 capabilities XML 文本，不触网
+      if (xml) {
+        const layers = parseCapabilities(xml)
+        return layers.length
+          ? { ok: true, source: '(inline xml)', count: layers.length, layers }
+          : { ok: false, error: '未在 XML 中发现任何图层（FeatureType）' }
+      }
+      if (!url || !/^https?:\/\//.test(url)) return { ok: false, error: '服务基址须为 http(s) URL' }
+      const sep = url.indexOf('?') >= 0 ? '&' : '?'
+      const capsUrl = url + sep + 'service=WFS&request=GetCapabilities&acceptVersions=2.0.0,1.1.0'
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 10000) // 壳层契约：10s 超时
+        const resp = await fetch(capsUrl, { signal: ctrl.signal, redirect: 'follow' })
+        clearTimeout(timer)
+        const layers = parseCapabilities(await resp.text())
+        if (!layers.length) return { ok: false, error: '未在响应中发现任何图层（FeatureType）——请核对基址为 WFS 服务' }
+        return { ok: true, source: capsUrl, count: layers.length, layers }
+      } catch (e) {
+        return { ok: false, error: 'GetCapabilities 拉取失败: ' + (e && e.message || e) }
+      }
+    }
+
     // ------ 系统自省 ------
     async function introspect() { return runKanyu(['introspect', '--json'], 60000) }
 
@@ -550,6 +601,7 @@ return {
     harness.handle('ping', async () => ping())
     harness.handle('introspect', async () => introspect())
     harness.handle('catalog.list', async (a) => catalogList(a && a.dir, a && a.depth))
+    harness.handle('services.discover', async (a) => servicesDiscover(a && a.url, a && a.xml))
     harness.handle('data.info', async (a) => dataInfo(a && a.path))
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
@@ -601,12 +653,19 @@ return {
 
     textTool({
       name: 'kanyu_catalog',
-      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回路径/类型/大小清单。',
+      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回五分类计数与路径/类型/大小清单；给出 url 时改为 WFS GetCapabilities 图层发现（服务链接）。',
       parameters: {
         dir: { type: 'string', description: '起始目录（缺省为会话工作区根）' },
         depth: { type: 'number', description: '递归深度（默认 3）' },
+        url: { type: 'string', description: 'WFS 服务基址（给出时忽略 dir/depth，拉 GetCapabilities 列图层）' },
       },
       async execute(args) {
+        if (args.url) {
+          const d = await servicesDiscover(args.url)
+          if (!d.ok) return 'WFS 图层发现失败: ' + d.error
+          const lines = d.layers.slice(0, 60).map(l => l.name + (l.title ? '  —— ' + l.title : ''))
+          return 'WFS 服务 ' + d.source + ' 发现 ' + d.count + ' 个图层' + (d.count > 60 ? '（前 60 条）' : '') + ':\n' + lines.join('\n')
+        }
         const r = await catalogList(args.dir, args.depth)
         if (!r.ok) return '目录扫描失败: ' + r.error
         const lines = r.items.slice(0, 80).map(i => i.ext.toUpperCase().padEnd(8) + ' ' + (i.size === null ? '-' : Math.round(i.size / 1024) + 'KB').padStart(9) + '  ' + shortPath(i.path))

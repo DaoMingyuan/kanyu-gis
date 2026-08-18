@@ -1,5 +1,22 @@
 # dsh/ 组件变更记录
 
+## [0.12.0] — 2026-08-18
+
+- **服务链接：WFS GetCapabilities 图层发现（对齐壳层 services.rs）**：新增
+  `services.discover` RPC（RPC 表 18→**19**）——`parseCapabilities` 为壳层
+  同名纯函数的 JS 移植（`<FeatureType>` 块内 Name/Title 最小提取 +
+  实体反转义 + 命名空间前缀剥离，不引 XML 库）；URL 路径 10s 超时
+  （AbortController）+ `acceptVersions=2.0.0,1.1.0`；`xml` 参数为离线
+  解析路径（测试/调试不触网）。`kanyu_catalog` 动态工具加 `url` 分支
+  （WFS 图层清单文本）。
+- **双客户端目录页签服务链接分类发现表单**：基址输入 + 「发现图层」按钮，
+  结果图层列表（name —— title）；空态提示保持壳层文案语义。
+  新增 `dsh/examples/wfs_capabilities.xml` 夹具（命名空间前缀 +
+  实体转义 + 缺 Name 坏块三态）。
+- **测试器 +3 断言**（services.discover 解析契约 + 双客户端表单契约），
+  RPC 计数断言 18→19；总计 **54/54 全绿**（static 43/43）。3080 桥实测：
+  夹具解析 2 图层、命名空间剥离与实体反转义正确、坏块跳过。
+
 ## [0.11.0] — 2026-08-18
 
 - **目录域深化：五分类对齐壳层 `catalog.rs`**：`catalog.list` RPC 响应扩展

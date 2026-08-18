@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:ows="http://www.opengis.net/ows/1.1" version="2.0.0">
+  <FeatureTypeList>
+    <FeatureType>
+      <Name>demo:buildings</Name>
+      <Title>示例建筑 &amp; 设施</Title>
+    </FeatureType>
+    <wfs:FeatureType>
+      <wfs:Name>demo:roads</wfs:Name>
+      <wfs:Title>示例道路</wfs:Title>
+    </wfs:FeatureType>
+    <FeatureType>
+      <Title>缺 Name 的坏块（应被跳过）</Title>
+    </FeatureType>
+  </FeatureTypeList>
+</wfs:WFS_Capabilities>

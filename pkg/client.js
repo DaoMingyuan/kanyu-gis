@@ -133,6 +133,31 @@ window.__ModuleLoader__.load({
           h('span', null, it.name),
           h('span', { className: 'sz' }, it.size === null ? '' : Math.round(it.size / 1024) + 'KB'))
       }
+      // 服务链接分类：WFS GetCapabilities 图层发现（services.discover，对齐壳层 services.rs）
+      const [svcUrl, setSvcUrl] = React.useState('')
+      const [svcLayers, setSvcLayers] = React.useState(null)
+      const [svcBusy, setSvcBusy] = React.useState(false)
+      const [svcMsg, setSvcMsg] = React.useState('')
+      async function discover() {
+        setSvcBusy(true); setSvcMsg('拉取 GetCapabilities…'); setSvcLayers(null)
+        try {
+          const r = await hostCall('services.discover', { url: svcUrl })
+          if (r && r.ok) { setSvcLayers(r.layers); setSvcMsg('发现 ' + r.count + ' 个图层') }
+          else setSvcMsg('失败: ' + (r && r.error || '未知'))
+        } catch (e) { setSvcMsg('RPC 失败: ' + (e && e.message || e)) }
+        setSvcBusy(false)
+      }
+      function svcSection() {
+        return h('div', null,
+          h('div', { className: 'kyg-row' },
+            h('input', { className: 'kyg-input', value: svcUrl, placeholder: 'WFS 服务基址，如 https://example.com/wfs', onChange: e => setSvcUrl(e.target.value) }),
+            h('button', { className: 'kyg-btn', disabled: svcBusy || !svcUrl, onClick: discover }, '发现图层')),
+          svcMsg ? h('div', { className: 'kyg-hint' }, svcMsg) : null,
+          svcLayers ? svcLayers.map((l, i) => h('div', { key: i, className: 'kyg-list-item' },
+            h('span', { className: 'ext' }, 'WFS'),
+            h('span', null, l.name + (l.title ? ' —— ' + l.title : ''))))
+            : h('div', { className: 'kyg-hint' }, '暂无服务链接——输入基址点「发现图层」'))
+      }
       function catSection(cat) {
         const list = cat.name === '数据库' ? (data.dbItems || []) : cat.name === '本机数据' ? (data.dataItems || []) : []
         // 壳层契约：默认仅「本机数据」展开
@@ -142,8 +167,8 @@ window.__ModuleLoader__.load({
             h('span', { className: 'arr' }, isOpen ? '▾' : '▸'),
             h('span', null, cat.name),
             h('span', { className: 'ct' }, cat.count)),
-          isOpen && (list.length
-            ? list.map(itemRow)
+          isOpen && (cat.name === '服务链接' ? svcSection()
+            : list.length ? list.map(itemRow)
             : h('div', { className: 'kyg-hint' }, cat.placeholder || '（空）')))
       }
       return h('div', null,
