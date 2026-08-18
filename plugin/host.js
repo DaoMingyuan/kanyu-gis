@@ -281,7 +281,48 @@ return {
     }
 
     // ------ 能力 1：地图面板（离屏渲染 → base64 PNG 回传 Client） ------
-    async function renderMap(path, theme, width, height, style) {
+    // 符号化编辑模型 → StyleRule 投影（第五十二轮，对齐壳层 symbology.rs
+    // LayerSymbology→to_style_rule；.kyu 持久化用本模型，CLI 直通用 StyleRule）。
+    // 色带值与 Ramp::colors 逐一对应（浅→深 5 色）；sample 对齐均匀取样算法。
+    const RAMPS = {
+      Jade:  ['#E8F4F0', '#BFE0D8', '#7FBFB2', '#4D9A8C', '#2D6A5E'],
+      Amber: ['#FBF3DC', '#F3DFA0', '#E9C46A', '#D9A23C', '#B07818'],
+      Slate: ['#EAF1F6', '#C6D9E6', '#8FB3CC', '#5E8FAD', '#3A6B8C'],
+    }
+    // f64::MIN（首档阈值全域着色，对齐 to_style_rule；JS Number.MIN_VALUE 是
+    // 最小正数，绝不可用）
+    const F64_MIN = -1.7976931348623157e308
+    function hexOf(c) {
+      const p = (Array.isArray(c) ? c : []).map(v => Math.max(0, Math.min(255, Math.round(Number(v) || 0))))
+      while (p.length < 3) p.push(0)
+      return '#' + p.slice(0, 3).map(v => v.toString(16).padStart(2, '0').toUpperCase()).join('')
+    }
+    function rampSample(name, n) {
+      const cs = RAMPS[name] || RAMPS.Jade
+      n = Math.max(1, n | 0)
+      const out = []
+      for (let i = 0; i < n; i++) out.push(cs[n === 1 ? cs.length - 1 : Math.floor(i * (cs.length - 1) / (n - 1))])
+      return out
+    }
+    function symToRule(sym) {
+      if (!sym || typeof sym !== 'object') return null
+      const mode = String(sym.mode || '')
+      if (mode === 'single') return { type: 'categorical', field: '', colors: {}, default: hexOf(sym.color) }
+      if (mode === 'categorical') {
+        const colors = {}
+        ;(sym.colors || []).forEach(p => { if (Array.isArray(p) && p.length >= 2) colors[String(p[0])] = hexOf(p[1]) })
+        return { type: 'categorical', field: String(sym.field || ''), colors, default: hexOf(sym.other || [136, 136, 136]) }
+      }
+      if (mode === 'graduated') {
+        const breaks = (sym.breaks || []).map(Number).filter(isFinite)
+        const cols = rampSample(sym.ramp, breaks.length + 1)
+        const stops = [[F64_MIN, cols[0]]]
+        breaks.forEach((b, i) => stops.push([b, cols[i + 1]]))
+        return { type: 'graduated', field: String(sym.field || ''), stops }
+      }
+      return null
+    }
+    async function renderMap(path, theme, width, height, style, symbology) {
       await ensureOutDir()
       const p = await procPath(path)
       const out = OUT_DIR + '\\kanyu-map-' + Date.now() + '.png'
@@ -293,6 +334,9 @@ return {
       // 命令行引号转义可靠传递（2026-08-18 实测 3080 桥打穿为 pwsh 后端，
       // \" 转义被拆成多参数报 unexpected argument）；样式 JSON 落临时文件，
       // 路径参数不含引号，pwsh/bash 双兼容。非法规则由内核中文校验报错回传。
+      // symbology（LayerSymbology 编辑模型，.kyu 持久化格式）经 symToRule
+      // 投影为 StyleRule；显式 style 优先（第五十二轮）。
+      if ((!style || typeof style !== 'object') && symbology && typeof symbology === 'object') style = symToRule(symbology)
       if (style && typeof style === 'object') {
         const sf = OUT_DIR + '\\kanyu-style-' + Date.now() + '.json'
         const target = await fs.resolve(sf)
@@ -301,14 +345,47 @@ return {
       }
       args.push(q(p))
       const r = await runKanyu(args, 180000)
-      if (!r.ok || !fs) return { run: r, pngBase64: null, out }
+      if (!r.ok || !fs) return { run: r, pngBase64: null, out, styleApplied: style || null }
       try {
         const target = await fs.resolve(out)
         const bytes = await fs.readBytes(target, undefined, 16 * 1024 * 1024)
-        return { run: r, pngBase64: bytesToBase64(bytes), out }
+        return { run: r, pngBase64: bytesToBase64(bytes), out, styleApplied: style || null }
       } catch (e) {
-        return { run: r, pngBase64: null, out, readError: String(e && e.message || e) }
+        return { run: r, pngBase64: null, out, styleApplied: style || null, readError: String(e && e.message || e) }
       }
+    }
+
+    // 工程图层样式读写（style.get/style.set RPC，第五十二轮）：.kyu 清单
+    // layers[].style 为 LayerSymbology JSON（壳层 project.rs 原样透传字段，
+    // core 不解 schema）；读回供符号化面板回填，写入对齐 core 的
+    // to_string_pretty 两空格缩进。图层按 id 匹配。
+    async function styleGet(kyu, layerId) {
+      if (!kyu) return { ok: false, error: '缺 kyu 工程路径' }
+      let m
+      try {
+        m = JSON.parse(await fs.readText(await fs.resolve(await procPath(kyu))))
+      } catch (e) { return { ok: false, error: 'kyu 工程读取/解析失败: ' + String(e && e.message || e) } }
+      const layers = m.layers || []
+      const lay = layerId != null && layerId !== '' ? layers.find(l => l.id === layerId) : layers[0]
+      if (!lay) return { ok: false, error: '工程内未找到图层: ' + String(layerId || '(空)') }
+      return { ok: true, kyu, layerId: lay.id, source: lay.source, style: lay.style || null }
+    }
+    async function styleSet(kyu, layerId, style) {
+      if (!kyu) return { ok: false, error: '缺 kyu 工程路径' }
+      if (!style || typeof style !== 'object' || !/^(single|categorical|graduated)$/.test(String(style.mode || '')))
+        return { ok: false, error: 'style 须为 LayerSymbology JSON（mode: single/categorical/graduated，对齐壳层 symbology.rs）' }
+      let target
+      try { target = await fs.resolve(await procPath(kyu)) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+      let m
+      try { m = JSON.parse(await fs.readText(target)) }
+      catch (e) { return { ok: false, error: 'kyu 工程读取/解析失败: ' + String(e && e.message || e) } }
+      const lay = (m.layers || []).find(l => l.id === layerId)
+      if (!lay) return { ok: false, error: '工程内未找到图层: ' + String(layerId || '(空)') }
+      lay.style = style
+      try {
+        await fs.writeText(target, JSON.stringify(m, null, 2))
+      } catch (e) { return { ok: false, error: 'kyu 工程写回失败: ' + writeHint(e) } }
+      return { ok: true, kyu, layerId: lay.id, style }
     }
 
     // 布局排版（kanyu render layout，第四十六轮出口）：A4 横/竖页面 +
@@ -929,9 +1006,11 @@ return {
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
     harness.handle('data.preview', async (a) => dataPreview(a && a.path, a && a.limit))
     harness.handle('data.calc', async (a) => dataCalc(a && a.path, a && a.target, a && a.expr, a && a.output))
-    harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
+    harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style, a && a.symbology))
     harness.handle('render.layout', async (a) => layoutPreview(a))
     harness.handle('catalog.readImage', async (a) => readImagePng(a && a.path))
+    harness.handle('style.get', async (a) => styleGet(a && a.kyu, a && a.layerId))
+    harness.handle('style.set', async (a) => styleSet(a && a.kyu, a && a.layerId, a && a.style))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))

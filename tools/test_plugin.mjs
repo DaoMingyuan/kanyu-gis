@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（28 个）', rpc.size === 28, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（30 个）', rpc.size === 30, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -155,6 +155,16 @@ async function main() {
   // crs.reproject 同款防护（2026-08-18 第二十七轮）：write_geojson_result 同为 std::fs::write
   check('host.js crsReproject 落盘前 ensureOutDir（reproject --output 同款防护）',
     /async function crsReproject[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
+  // 符号化编辑模型投影（2026-08-18 第五十二轮）：LayerSymbology → StyleRule
+  // 对齐壳层 symbology.rs to_style_rule（色带值/f64::MIN 首档/均匀取样）
+  const symProjKeys = ['symToRule', 'RAMPS', 'F64_MIN', 'rampSample', 'hexOf', 'Jade', 'Amber', 'Slate'];
+  check('host.js 符号化投影 symToRule（RAMPS 三色带 + F64_MIN 首档 + 均匀取样）',
+    symProjKeys.every((k) => hostSrc.includes(k)),
+    symProjKeys.filter((k) => !hostSrc.includes(k)).join(',') || '全部命中');
+  // 工程图层样式读写（第五十二轮）：style.get/style.set RPC + .kyu layers[].style
+  check('host.js style.get/style.set 注册（.kyu LayerSymbology 读写 + 图层 id 匹配）',
+    hostSrc.includes("harness.handle('style.get'") && hostSrc.includes("harness.handle('style.set'")
+      && hostSrc.includes('async function styleGet') && hostSrc.includes('async function styleSet'));
   // toolbox.run 同款防护（2026-08-18 第二十八轮）：tool run --output 单产出同路径写出
   check('host.js toolboxRun 落盘前 ensureOutDir（tool run --output 同款防护）',
     /async function toolboxRun[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
@@ -374,6 +384,31 @@ async function main() {
     });
     check('render.map 符号化：非升序 stops 内核校验拒绝', renderBad.run && !renderBad.run.ok && /升序/.test(String(renderBad.run.stderr)),
       renderBad.run ? 'exit=' + renderBad.run.exitCode : '无 run');
+    // LayerSymbology 编辑模型投影（2026-08-18 第五十二轮）：symbology 参数
+    // 经 symToRule 投成 StyleRule 出图；回执 styleApplied 带投影结果
+    const renderSym2 = await callRpc('render.map', {
+      path: EXAMPLE, theme: 'light', width: 480, height: 320,
+      symbology: { mode: 'graduated', field: 'height', breaks: [20, 40], ramp: 'Amber' },
+    });
+    const sa = renderSym2 && renderSym2.styleApplied;
+    check('render.map symbology 投影：graduated(breaks+ramp) → StyleRule（F64_MIN 首档 + 色带取样 3 色）出图',
+      renderSym2.run && renderSym2.run.ok && renderSym2.pngBase64 && sa && sa.type === 'graduated'
+        && sa.stops && sa.stops.length === 3 && sa.stops[0][0] < -1e307 && /^#[0-9A-F]{6}$/.test(sa.stops[0][1]),
+      sa ? JSON.stringify(sa).slice(0, 120) : '无 styleApplied');
+    // 工程样式读写闭环（第五十二轮）：临时 .kyu → style.set 写入 → style.get 读回一致
+    const kyuTmp = path.join(TMP_DIR, 'test-style.kyu');
+    await fsp.writeFile(kyuTmp, JSON.stringify({ kanyu_project: 1, name: 't', crs: 'EPSG:4326',
+      created: '2026-08-18T00:00:00Z', kanyu_version: '0.22.0',
+      layers: [{ id: 'l1', source: 'b.geojson', visible: true }] }, null, 2));
+    const symW = { mode: 'categorical', field: 'usage', colors: [['办公', [45, 106, 94]]], other: [136, 136, 136] };
+    const setR = await callRpc('style.set', { kyu: kyuTmp, layerId: 'l1', style: symW });
+    const getR = await callRpc('style.get', { kyu: kyuTmp, layerId: 'l1' });
+    check('style.set/style.get 闭环：.kyu 图层样式写入读回一致（LayerSymbology 原样透传）',
+      setR && setR.ok && getR && getR.ok && JSON.stringify(getR.style) === JSON.stringify(symW),
+      'set=' + (setR && setR.ok) + ' get=' + JSON.stringify(getR && getR.style).slice(0, 100));
+    const setBad = await callRpc('style.set', { kyu: kyuTmp, layerId: 'l1', style: { mode: 'bogus' } });
+    check('style.set 非法 mode 拒绝（中文报错指引 LayerSymbology 三模式）',
+      setBad && !setBad.ok && /single\/categorical\/graduated/.test(String(setBad.error)), String(setBad && setBad.error).slice(0, 60));
     // 布局排版分支（2026-08-18 第四十六轮）：kanyu_render(layout) 走 render layout CLI 出 SVG
     const tRender = tools.get('kanyu_render');
     const layOut = path.join(TMP_DIR, 'kanyu-layout.svg');
@@ -598,11 +633,17 @@ async function main() {
   check('client.js 3D 管线对齐内核 scene3d.rs（yaw/pitch/背面剔除/高度归一化 0.25/拖拽旋转）',
     s3dKeys.every((k) => clientSrc.includes(k)),
     s3dKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
-  // 地图面板符号化（2026-08-18 第十二轮）：buildStyle 构建 StyleRule 直通 --style
-  const symKeys = ['buildStyle', 'graduated', 'categorical', '符号化'];
-  check('client.js 地图页签符号化控件（buildStyle + graduated/categorical）',
+  // 地图面板符号化（2026-08-18 第十二轮起步 / 第五十二轮升级为 LayerSymbology
+  // 编辑模型）：buildSymbology 构建 single/categorical/graduated + symToForm 回填
+  const symKeys = ['buildSymbology', 'symToForm', 'single', 'graduated', 'categorical', '符号化'];
+  check('client.js 地图页签符号化控件（buildSymbology + single/graduated/categorical）',
     symKeys.every((k) => clientSrc.includes(k)),
     symKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 工程样式读写区（第五十二轮）：style.get/style.set + 读取样式/写入工程按钮
+  const symKyuKeys = ['style.get', 'style.set', '读取样式', '写入工程'];
+  check('client.js 地图页签工程样式读写区（style.get/style.set + 读取/写入按钮）',
+    symKyuKeys.every((k) => clientSrc.includes(k)),
+    symKyuKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 目录页签五分类（2026-08-18 第十四/二十轮）：分类头 + 数据库/本机数据/地图框/布局框分离
   const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '本机数据'];
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
@@ -714,6 +755,9 @@ async function main() {
   check('pkg/client.js 地图页签符号化控件（与动态半同契约）',
     symKeys.every((k) => pkgClientSrc.includes(k)),
     symKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 地图页签工程样式读写区（与动态半同契约）',
+    symKyuKeys.every((k) => pkgClientSrc.includes(k)),
+    symKyuKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 目录页签五分类区（与动态半同契约）',
     catKeys.every((k) => pkgClientSrc.includes(k)),
     catKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
@@ -765,7 +809,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 28 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 30 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
   // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
   // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）

@@ -1,5 +1,25 @@
 # dsh/ 组件变更记录
 
+## [0.48.0] — 2026-08-18
+
+- **图层符号化编辑移植（第五十二轮，壳层 symbology.rs 图层属性页对齐）**：
+  Host 半新增 LayerSymbology→StyleRule 投影（`symToRule` + `RAMPS` 青玉/
+  琥珀/蓝灰三色带值逐一对齐壳层 + `rampSample` 均匀取样 + F64_MIN 首档
+  全域着色）；`render.map` 新增 `symbology` 入参（编辑模型 JSON，显式
+  style 优先），回执带 `styleApplied` 投影结果。新增 `style.get` /
+  `style.set` RPC（28→30）：.kyu 清单 `layers[].style` 读写（LayerSymbology
+  JSON 原样透传对齐 project.rs 语义，图层按 id 匹配，写回两空格缩进对齐
+  core to_string_pretty，写拒绝带 workspace-write 可操作指引）。双端地图
+  页签符号化区由裸 StyleRule 文本升级为编辑模型：单色（颜色选择器）/
+  唯一值（字段+类别色文本+<其他>色）/分级（字段+断点文本+色带下拉）三模式
+  + 工程样式读写行（.kyu 路径 + 图层 id + 读取样式回填/写入工程按钮）。
+- **测试器 +7 断言**（host symToRule/RAMPS 契约键 + style RPC 注册 +
+  render.map symbology 投影动态实测（F64_MIN 首档+色带取样 3 色）+
+  style.set/get 闭环 + 非法 mode 拒绝 + 双端工程样式区契约键）；总计
+  **141/141 全绿**（static 108/108）。3080 生产桥三测：health rpc:30 +
+  symbology 投影出图（Slate 色带 4 要素）+ style.set 工作区外写拒绝
+  writeHint 指引。领域技能 SKILL.md 同步 v1.2（30 RPC/141 断言实况对齐）。
+
 ## [0.47.0] — 2026-08-18
 
 - **GIS 模式领域技能 SKILL.md 与组件能力面一致性精修（第五十一轮，AI 能力

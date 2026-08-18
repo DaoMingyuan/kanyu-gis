@@ -314,23 +314,50 @@ function TabData(props) {
   )
 }
 
-// 地图：离屏渲染面板（含属性驱动符号化，StyleRule 直通 kanyu render --style）
-// 符号化规则构建：graduated stops 文本格式「阈值:#RRGGBB,…」（严格升序）；
-// categorical colors 文本格式「类别:#RRGGBB,…」+ 可选默认色「*:#888888」。
-function buildStyle(method, field, spec) {
-  if (method === 'none' || !field.trim()) return null
-  const pairs = spec.split(',').map(s => s.trim()).filter(Boolean)
-    .map(s => { const i = s.lastIndexOf(':'); return i > 0 ? [s.slice(0, i).trim(), s.slice(i + 1).trim()] : null })
-    .filter(Boolean)
-  if (method === 'graduated') {
-    const stops = pairs.map(p => [Number(p[0]), p[1]]).filter(p => isFinite(p[0]))
-    return stops.length ? { type: 'graduated', field: field.trim(), stops } : null
+// 地图：离屏渲染面板（符号化编辑模型 LayerSymbology 直通 render.map symbology，
+// Host 半 symToRule 投影为 StyleRule——对齐壳层 symbology.rs/.kyu 持久化格式，
+// 第五十二轮由裸 StyleRule 文本切换为编辑模型，单色/唯一值/分级三模式齐备）。
+// 颜色 hex ↔ RGB 数组转换；categorical 文本格式「类别:#RRGGBB,…」；
+// graduated 断点文本格式「阈值,阈值,…」（严格升序，颜色由色带取样生成）。
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || '').trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function rgbToHex(c) {
+  if (!Array.isArray(c) || c.length < 3) return '#888888'
+  return '#' + c.slice(0, 3).map(v => Math.max(0, Math.min(255, Number(v) || 0)).toString(16).padStart(2, '0')).join('')
+}
+function buildSymbology(method, field, spec, singleColor, otherColor, ramp) {
+  if (method === 'none') return null
+  if (method === 'single') {
+    const c = hexToRgb(singleColor)
+    return c ? { mode: 'single', color: c } : { error: '单色颜色须为 #RRGGBB' }
   }
-  const colors = {}; let def = null
-  pairs.forEach(p => { if (p[0] === '*') def = p[1]; else colors[p[0]] = p[1] })
-  const rule = { type: 'categorical', field: field.trim(), colors }
-  if (def) rule.default = def
-  return Object.keys(colors).length ? rule : null
+  const f = field.trim()
+  if (!f) return { error: '符号化字段不能为空' }
+  if (method === 'graduated') {
+    const breaks = spec.split(',').map(s => Number(s.trim())).filter(isFinite)
+    if (!breaks.length) return { error: '断点须为逗号分隔数字（如 10,20,40）' }
+    for (let i = 1; i < breaks.length; i++) if (breaks[i] <= breaks[i - 1]) return { error: '断点须严格升序' }
+    return { mode: 'graduated', field: f, breaks, ramp: ramp || 'Jade' }
+  }
+  const colors = spec.split(',').map(s => s.trim()).filter(Boolean)
+    .map(s => { const i = s.lastIndexOf(':'); return i > 0 ? [s.slice(0, i).trim(), hexToRgb(s.slice(i + 1))] : null })
+    .filter(p => p && p[0] && p[1])
+  if (!colors.length) return { error: '类别色须为「类别:#RRGGBB,…」格式' }
+  return { mode: 'categorical', field: f, colors, other: hexToRgb(otherColor) || [136, 136, 136] }
+}
+// 工程样式读回 → 表单回填（style.get 回执 LayerSymbology → 控件态）
+function symToForm(sym) {
+  if (!sym || typeof sym !== 'object') return null
+  if (sym.mode === 'single') return { method: 'single', field: '', spec: '', singleColor: rgbToHex(sym.color) }
+  if (sym.mode === 'categorical') return { method: 'categorical', field: sym.field || '',
+    spec: (sym.colors || []).map(p => p[0] + ':' + rgbToHex(p[1])).join(','), otherColor: rgbToHex(sym.other) }
+  if (sym.mode === 'graduated') return { method: 'graduated', field: sym.field || '',
+    spec: (sym.breaks || []).join(','), ramp: sym.ramp || 'Jade' }
+  return null
 }
 
 function TabMap(props) {
@@ -340,18 +367,53 @@ function TabMap(props) {
   const [symMethod, setSymMethod] = React.useState('none')
   const [symField, setSymField] = React.useState('')
   const [symSpec, setSymSpec] = React.useState('')
+  const [singleColor, setSingleColor] = React.useState('#2D6A5E')
+  const [otherColor, setOtherColor] = React.useState('#888888')
+  const [ramp, setRamp] = React.useState('Jade')
+  const [kyuPath, setKyuPath] = React.useState('')
+  const [layerId, setLayerId] = React.useState('')
   const [img, setImg] = React.useState(null)
   const [msg, setMsg] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
   async function render2d(p) {
     const usePath = p || path
+    const sym = buildSymbology(symMethod, symField, symSpec, singleColor, otherColor, ramp)
+    if (sym && sym.error) { setMsg('符号化参数: ' + sym.error); return }
     setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
     try {
-      const style = buildStyle(symMethod, symField, symSpec)
-      const r = await host.call('render.map', { path: usePath, theme, width: 760, height: 520, style })
-      if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (style ? ' · 符号化: ' + style.type + '(' + style.field + ')' : '')) }
+      const r = await host.call('render.map', { path: usePath, theme, width: 760, height: 520, symbology: sym })
+      if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')) }
       else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
+    } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
+    setBusy(false)
+  }
+  // 工程样式读写（style.get/style.set RPC，第五十二轮）：读取回填表单 /
+  // 写入 .kyu 图层 style（LayerSymbology JSON，壳层工程属性页同语义）
+  async function styleLoad() {
+    setBusy(true)
+    try {
+      const r = await host.call('style.get', { kyu: kyuPath, layerId })
+      if (r && r.ok) {
+        const f = symToForm(r.style)
+        if (f) {
+          setSymMethod(f.method); setSymField(f.field || ''); setSymSpec(f.spec || '')
+          if (f.singleColor) setSingleColor(f.singleColor)
+          if (f.otherColor) setOtherColor(f.otherColor)
+          if (f.ramp) setRamp(f.ramp)
+          setMsg('已读取工程样式: ' + r.layerId + '（' + r.style.mode + '）')
+        } else setMsg('图层 ' + r.layerId + ' 无样式（默认单色）')
+      } else setMsg((r && r.error) || '读取失败')
+    } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
+    setBusy(false)
+  }
+  async function styleSave() {
+    const sym = buildSymbology(symMethod, symField, symSpec, singleColor, otherColor, ramp)
+    if (!sym || sym.error) { setMsg('符号化参数: ' + (sym ? sym.error : '未配置')); return }
+    setBusy(true)
+    try {
+      const r = await host.call('style.set', { kyu: kyuPath, layerId, style: sym })
+      setMsg(r && r.ok ? '样式已写入工程: ' + r.layerId + '（' + sym.mode + '）' : (r && r.error) || '写入失败')
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
@@ -373,14 +435,26 @@ function TabMap(props) {
         h('option', { value: 'light' }, '晨山 (light)'), h('option', { value: 'dark' }, '夜观星 (dark)')),
       h('span', { className: 'kyg-label' }, '符号化'),
       h('select', { className: 'kyg-input', value: symMethod, onChange: e => setSymMethod(e.target.value) },
-        h('option', { value: 'none' }, '单色（默认）'),
-        h('option', { value: 'graduated' }, '分级 (graduated)'),
-        h('option', { value: 'categorical' }, '唯一值 (categorical)')),
+        h('option', { value: 'none' }, '默认'),
+        h('option', { value: 'single' }, '单色 (single)'),
+        h('option', { value: 'categorical' }, '唯一值 (categorical)'),
+        h('option', { value: 'graduated' }, '分级 (graduated)')),
       h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染')),
-    symMethod !== 'none' ? h('div', { className: 'kyg-row' },
+    symMethod === 'single' ? h('div', { className: 'kyg-row' },
+      h('span', { className: 'kyg-label' }, '颜色'),
+      h('input', { type: 'color', className: 'kyg-input', value: singleColor, onChange: e => setSingleColor(e.target.value) })) : null,
+    symMethod === 'categorical' || symMethod === 'graduated' ? h('div', { className: 'kyg-row' },
       h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '字段名', value: symField, onChange: e => setSymField(e.target.value) }),
       h('input', { className: 'kyg-input', style: { flex: 1 }, value: symSpec, onChange: e => setSymSpec(e.target.value),
-        placeholder: symMethod === 'graduated' ? '阈值:#RRGGBB,…（严格升序，如 10:#D85C4A,20:#E8A33D）' : '类别:#RRGGBB,…（*:#888888 为默认色）' })) : null,
+        placeholder: symMethod === 'graduated' ? '断点,…（严格升序数字，如 10,20,40；颜色由色带取样）' : '类别:#RRGGBB,…（如 办公:#2D6A5E,住宅:#D9A23C）' }),
+      symMethod === 'graduated' ? h('select', { className: 'kyg-input', value: ramp, onChange: e => setRamp(e.target.value) },
+        h('option', { value: 'Jade' }, '青玉'), h('option', { value: 'Amber' }, '琥珀'), h('option', { value: 'Slate' }, '蓝灰')) : null,
+      symMethod === 'categorical' ? h('input', { type: 'color', className: 'kyg-input', title: '<其他> 色', value: otherColor, onChange: e => setOtherColor(e.target.value) }) : null) : null,
+    h('div', { className: 'kyg-row' },
+      h('input', { className: 'kyg-input', style: { flex: 1 }, placeholder: '.kyu 工程路径（符号化持久化）', value: kyuPath, onChange: e => setKyuPath(e.target.value) }),
+      h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '图层 id', value: layerId, onChange: e => setLayerId(e.target.value) }),
+      h('button', { className: 'kyg-btn', disabled: busy || !kyuPath, onClick: styleLoad }, '读取样式'),
+      h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
     h('div', { className: 'kyg-hint' }, msg),
     img ? h('img', { className: 'kyg-img', src: img, alt: '地图渲染' }) : null,
   )
