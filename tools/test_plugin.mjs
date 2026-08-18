@@ -149,6 +149,9 @@ async function main() {
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
   check('host.js 写回失败含 workspace-write 可操作指引（3080 实测 fs 只读工作区外）',
     hostSrc.includes('workspace-write') && hostSrc.includes('writeHint'));
+  // data.query 落盘健壮性（2026-08-18 第二十六轮）：kanyu --output 底层不建父目录，须先 ensureOutDir
+  check('host.js dataQuery 落盘前 ensureOutDir（dsh/output 缺省时 --output 写失败防护）',
+    /async function dataQuery[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -220,6 +223,14 @@ async function main() {
     let queryHits = -1;
     try { queryHits = JSON.parse(query.stdout.slice(query.stdout.search(/[{[]/))).features.length; } catch { /* 解析失败即 -1 */ }
     check('data.query：filter "height > 10" 有命中', query.ok && queryHits > 0, 'matched=' + queryHits);
+    // 查询落盘联动依赖面（2026-08-18 第二十六轮）：output 写出 + stderr「已写出 N 个要素」计数契约
+    const qOut = path.join(TMP_DIR, 'query-out.geojson');
+    const queryWo = await callRpc('data.query', { path: EXAMPLE, filter: 'height > 10', output: qOut });
+    let qWritten = -1;
+    try { qWritten = JSON.parse(await fsp.readFile(qOut, 'utf8')).features.length; } catch { /* 解析失败即 -1 */ }
+    check('data.query(output)：落盘 + stderr 计数契约（客户端 runQuery 依赖面，与 stdout 路径同计数）',
+      queryWo.ok && /已写出 \d+ 个要素/.test(queryWo.stderr) && qWritten > 0 && qWritten === queryHits,
+      'stderr=' + String(queryWo.stderr).slice(0, 60) + ' written=' + qWritten);
     const val = await callRpc('data.validate', { path: EXAMPLE });
     check('data.validate：执行不抛错（GeoJSON 非宗地 TXT，宽松断言）', typeof val.exitCode === 'number');
   }
@@ -433,6 +444,11 @@ async function main() {
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
     tbKeys.every((k) => clientSrc.includes(k)),
     tbKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 数据页签查询联动（2026-08-18 第二十六轮）：runQuery 落盘 + 命中计数 + 设为当前图层
+  const qryKeys = ['runQuery', 'kanyu-query-', '已写出 ', '已设为当前图层'];
+  check('client.js 数据页签查询联动（runQuery + 落盘 dsh/output + 命中 N/M + 设为当前图层）',
+    qryKeys.every((k) => clientSrc.includes(k)),
+    qryKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -479,6 +495,9 @@ async function main() {
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 数据页签查询联动（与动态半同契约）',
+    qryKeys.every((k) => pkgClientSrc.includes(k)),
+    qryKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));

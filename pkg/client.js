@@ -242,6 +242,27 @@ window.__ModuleLoader__.load({
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // 查询联动：过滤 → 落盘 dsh/output/ → stderr 解析命中数 + data.preview 取总数
+      // → 设为当前图层（store.path 广播，目录/地图/编辑等页签联动跟随）
+      async function runQuery() {
+        setBusy(true); setOut('查询中…'); setTable(null)
+        try {
+          const outPath = 'dsh/output/kanyu-query-' + Date.now() + '.geojson'
+          const r = await hostCall('data.query', { path, filter, output: outPath })
+          if (!r || !r.ok) { setOut('查询失败: ' + ((r && (r.stderr || r.error)) || '未知')); setBusy(false); return }
+          const m = /已写出 (\d+) 个要素/.exec(r.stderr || '')
+          const hit = m ? Number(m[1]) : null
+          let total = null
+          try {
+            const pv = await hostCall('data.preview', { path, limit: 1 })
+            if (pv && pv.ok) total = pv.total
+          } catch (e) { /* 总数不可达时只报命中数 */ }
+          store.path = outPath; setPath(outPath); props.notify()
+          setOut('命中 ' + (hit === null ? '?' : hit) + (total === null ? '' : '/' + total) +
+            ' 要素 → 已设为当前图层: ' + outPath)
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
       const thS = { textAlign: 'left', padding: '3px 8px', borderBottom: '1px solid rgba(128,128,128,.4)', position: 'sticky', top: 0, background: 'rgba(128,128,128,.12)', whiteSpace: 'nowrap' }
       const tdS = { padding: '2px 8px', borderBottom: '1px solid rgba(128,128,128,.15)', whiteSpace: 'nowrap', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }
       return h('div', null,
@@ -252,7 +273,7 @@ window.__ModuleLoader__.load({
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: preview }, '属性表')),
         Field('过滤', h('input', { className: 'kyg-input', value: filter, placeholder: '如 height > 50', onChange: e => setFilter(e.target.value) })),
         h('div', { className: 'kyg-row' },
-          h('button', { className: 'kyg-btn', disabled: busy || !path || !filter, onClick: () => call('data.query', { path, filter }) }, '查询')),
+          h('button', { className: 'kyg-btn', disabled: busy || !path || !filter, onClick: runQuery }, '查询')),
         table ? h('div', { className: 'kyg-table-wrap', style: { overflow: 'auto', maxHeight: '220px', border: '1px solid rgba(128,128,128,.3)', borderRadius: '4px', margin: '6px 0' } },
           h('table', { style: { borderCollapse: 'collapse', fontSize: '11px', width: '100%' } },
             h('thead', null, h('tr', null, table.fields.map(f => h('th', { key: f, style: thS }, f)))),

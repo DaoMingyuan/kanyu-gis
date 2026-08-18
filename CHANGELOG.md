@@ -1,5 +1,21 @@
 # dsh/ 组件变更记录
 
+## [0.23.0] — 2026-08-18
+
+- **数据域深化：查询联动闭环**：双客户端数据页签「查询」按钮改专属
+  `runQuery()`——`data.query` 带 output 落盘 `dsh/output/kanyu-query-<ts>.geojson`
+  → stderr「已写出 N 个要素」解析命中数 + `data.preview` 取总数 M → 展示
+  「命中 N/M 要素」→ 落盘成功设 `store.path` 为结果文件并广播（目录/地图/
+  编辑等页签联动跟随当前图层）。查询结果从「一次性 JSON 文本」升级为
+  「可继续检视/渲染/编辑的图层」。
+- **host.js `dataQuery` 健壮性修复**：落盘前先 `ensureOutDir()`——
+  `kanyu data query --output` 底层 `std::fs::write` 不建父目录，`dsh/output`
+  缺省时写失败（此前 output 参数存在但该路径未保底）。RPC 表不变仍 25。
+- **测试器 +4 断言**（host 落盘 + stderr 计数契约与 stdout 路径同计数、
+  dataQuery ensureOutDir 静态契约、双端 runQuery 契约键）；总计 **78/78
+  全绿**（static 62/62）。3080 桥实测：带 output 查询落盘实例工作区
+  `dsh/output/smoke-query.geojson`，stderr 计数 3 要素正确。
+
 ## [0.22.0] — 2026-08-18
 
 - **3D 域深化：挤出体分类着色（壳层 symbology 唯一值语义的 3D 轻量投影）**：
