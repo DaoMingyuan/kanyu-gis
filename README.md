@@ -12,7 +12,7 @@
 | `pkg/` | **常驻静态插件**（双面包）：`index.js` Host 适配器（包装 host.js 单一事实源 + `webServer` 前缀路由 `/kanyu-gis/call` RPC 桥）+ `client.js` 静态客户端 bundle（dsh.client 约定，手写工厂格式；工作台面板**随 kanyu-gis preset 联动显示**——读会话快照 `agentPreset` 字段门控）+ `package.json`（`exports` 含 `./client` 与 `./package.json`、`dsh.client` 声明） |
 | `presets/kanyu-gis/` | GIS 模式 agent preset：`preset.yml`（发现元数据）+ `agent.cordis.yml`（代理平面组合：persona/工具面/plan-mode/compaction/delegation 组 + skill-filesystem 技能注入，形态与 local-hybrid 同方言）+ `skills/kanyu-gis/SKILL.md`（七域能力地图技能） |
 | `examples/` | 组件演示数据（GeoJSON 小样例） |
-| `tools/verify_preset.mjs` | preset 可加载性旁路校验（与 DSH 发现库同判定链）；用法：`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets` |
+| `tools/verify_preset.mjs` | preset 可加载性旁路校验（与 DSH 发现库同判定链 + 插件包存在性对照宿主检出 + 自带技能 SKILL.md frontmatter 校验）；用法：`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets` |
 | `sync-preset.sh` | 把仓库内 preset 源同步到本机 DSH 安装区（`~/.dsh/.agent-presets/kanyu-gis/`）并触发校验 |
 | `sync-local.sh` | **一键本地同步（每次更新后必跑）**：preset 回灌 + 校验 + web profile 静态插件重装（pnpm file: 副本刷新）；运行中的 `dsh web` 实例须重启方生效（组合树/boot 图启动时一次成型，不热加载） |
 

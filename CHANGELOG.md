@@ -1,5 +1,22 @@
 # dsh/ 组件变更记录
 
+## [0.45.0] — 2026-08-18
+
+- **verify_preset.mjs 校验覆盖扩展（第四十九轮）**：两面新校验——
+  ① 行内插件包存在性：组合行 name 解析为包名（作用域包前两段、子路径
+  如 `.../list-agents` 剥离、`cordis:*` 内核行豁免），对照宿主检出
+  node_modules（roster「包不存在」类 broken 旁路拦截，对齐初版误写
+  dsh-tool-read 事故）；② preset 自带技能 frontmatter：`skills/<id>/
+  SKILL.md` 须 `---` 包裹 YAML 映射且 name === 目录名、description 非空
+  （对齐 frontmatter 非法转义事故）；显式文件模式同样附带技能校验
+  （preset 目录 = 组合文件所在目录，sync-preset.sh 通道覆盖）。宿主
+  node_modules 路径提为 HOST_NM 单一事实来源；动态 import 改
+  命名空间/default 双层查找（js-yaml 等 ESM 构建以 default 导出为主）。
+  正/负向实测通过（bogus 包名拦截 + 现存 17 行全过），sync-preset.sh
+  联动验证 ALL FILES LOADABLE。
+- 测试器无新断言（verify_preset 依赖本机宿主检出绝对路径，不可进 CI
+  ——既有边界维持）；static 回归 100/100。
+
 ## [0.44.0] — 2026-08-18
 
 - **布局预览 UI（目录布局框点击 → 排版预览，第四十八轮）**：host 半新增
