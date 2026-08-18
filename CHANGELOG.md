@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.47.0] — 2026-08-18
+
+- **GIS 模式领域技能 SKILL.md 与组件能力面一致性精修（第五十一轮，AI 能力
+  整合优化方向）**：`dsh/presets/kanyu-gis/skills/kanyu-gis/SKILL.md` 三处
+  实况对齐——① 面板侧 RPC 清单 26→28：补 `render.layout`（kyu+title 工程
+  模式布局排版 SVG）与 `catalog.readImage`（产物 PNG 读盘 base64 + 越界
+  防护）；② 组件验证面计数 123→134 / static 96→104，验证面列举补
+  「布局排版出口/布局预览/地图框产物预览/verify_preset 插件包存在性+技能
+  frontmatter」四项；③ frontmatter metadata version "1.0"→"1.1"。
+  verify_preset ALL FILES LOADABLE + static 回归 104/104 全绿；
+  sync-preset.sh 回灌安装区完成（技能按会话加载，web 实例无需重启）。
+  纯文档一致性改动，无代码行为变更。
+
 ## [0.46.0] — 2026-08-18
 
 - **目录地图框条目点击预览（第五十轮，目录五分类可点闭环）**：host 半新增
