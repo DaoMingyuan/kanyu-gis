@@ -8,7 +8,8 @@
 | 路径 | 职责 |
 |------|------|
 | `plugin/host.js` | 组件 Host 半（宿主进程侧）：以 `kanyu` CLI 为执行后端，暴露 Package 私有 JSON RPC（`harness.handle`），并向 DSH 模型注册 8 个 `kanyu_*` 动态工具（`harness.registerTool`）——堪舆原壳层 LocalDriver/OpenAiDriver 意图面在 Harness function-calling 代理循环中的整合形态 |
-| `plugin/client.js` | 组件 Client 半（浏览器侧）：DSH Web GUI「堪舆 GIS 工作台」，会话头部按钮 + 全局浮层七页签（目录/数据/地图/坐标/处理/编辑/3D/关于）+ cordis 卡片，全部经 `host.call` 走 Host 半 |
+| `plugin/client.js` | 组件 Client 半（浏览器侧，动态包形态）：DSH Web GUI「堪舆 GIS 工作台」，会话头部按钮 + 全局浮层七页签（目录/数据/地图/坐标/处理/编辑/3D/关于）+ cordis 卡片，全部经 `host.call` 走 Host 半 |
+| `pkg/` | **常驻静态插件**（双面包）：`index.js` Host 适配器（包装 host.js 单一事实源 + `webServer` 前缀路由 `/kanyu-gis/call` RPC 桥）+ `client.js` 静态客户端 bundle（dsh.client 约定，手写工厂格式；工作台面板**随 kanyu-gis preset 联动显示**——读会话快照 `agentPreset` 字段门控）+ `package.json`（`exports` 含 `./client` 与 `./package.json`、`dsh.client` 声明） |
 | `presets/kanyu-gis/` | GIS 模式 agent preset：`preset.yml`（发现元数据）+ `agent.cordis.yml`（代理平面组合：persona/工具面/plan-mode/compaction/delegation 组 + skill-filesystem 技能注入，形态与 local-hybrid 同方言）+ `skills/kanyu-gis/SKILL.md`（七域能力地图技能） |
 | `examples/` | 组件演示数据（GeoJSON 小样例） |
 | `tools/verify_preset.mjs` | preset 可加载性旁路校验（与 DSH 发现库同判定链）；用法：`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets` |
@@ -35,7 +36,7 @@
 | 路线 | 机制 | 生命周期 |
 |------|------|----------|
 | 动态包（Web 工作台 + 8 工具） | 会话内 `cordis_define`（host.js + client.js）→ `cordis_run` | 进程内存态，重启不恢复（宿主设计如此） |
-| **常驻静态插件（8 工具）** | `dsh/pkg/` 适配器包装 host.js 单一事实源，经 `dsh plugin --profile web add file:<仓库>/dsh/pkg` + profile `cordis.patch.yml` insert 行安装 | 常驻，随 DSH 启动自动激活（2026-08-18 实测：web profile 启动日志「8 个 kanyu_* 工具注册进工具注册表」） |
+| **常驻静态插件（8 工具 + GIS 工作台面板）** | `dsh/pkg/` 双面包适配器包装 host.js 单一事实源，经 `dsh plugin --profile web add file:<仓库>/dsh/pkg` + profile `cordis.patch.yml` insert 行安装 | 常驻，随 DSH 启动自动激活（2026-08-18 实测：启动日志「8 个 kanyu_* 工具注册进工具注册表」+ boot 图含 `kanyu-gis-dsh-plugin` 客户端条目，切到 kanyu-gis preset 会话即见「🧭 堪舆GIS」头部按钮） |
 
 ```bash
 # 仓库 → 本机 DSH 安装区（preset 同步 + 校验）

@@ -1,5 +1,23 @@
 # dsh/ 组件变更记录
 
+## [0.4.0] — 2026-08-18
+
+- **GIS 工作台面板随 preset 联动加载（用户指令「切换到 GIS 模式时面板一并联动加载」）**：
+  `pkg/` 从纯 Host 适配器升级为 dsh.client 双面包——新增 `pkg/client.js` 静态客户端
+  bundle（手写工厂格式，`window.__ModuleLoader__.load`，id=包名），常驻进 web 前端
+  boot 图（`immediately: true`）；「🧭 堪舆GIS」头部按钮 + 七页签工作台浮层经
+  会话快照 `agentPreset` 字段门控，**仅 kanyu-gis 会话显示、切走即隐藏**。
+- Host 半新增 RPC 桥：`inject` 加 `webServer`，注册前缀路由 `POST /kanyu-gis/call`
+  （派发到 host.js 同一张 14 项 RPC 表）+ `GET /kanyu-gis/health`——静态形态无
+  host.call 通道（动态包专利），同源 HTTP 自定义路由是官方等价物。
+- 实测排障入档：声明 `dsh.client` 的 package.json 若带 `exports` 却不导出
+  `./package.json`，`require.resolve('<pkg>/package.json')` 受 exports 封装拦截，
+  客户端扫描静默跳过（boot 图无条目）——补 `"./package.json": "./package.json"` 后
+  实证修复（boot 图条目 + bundle 200 + ping/catalog.list 中文路径端到端全通）。
+- 验证链（dsh web 实例实测）：启动日志无 ClientPackageCompositionError；
+  `__DSH_BOOT__` 含 kanyu-gis-dsh-plugin 条目；`/plugins/.../client.js` 200；
+  `/kanyu-gis/call` ping（kanyu 0.22.0 + 七能力）与 catalog.list（命中示例数据）。
+
 ## [0.3.1] — 2026-08-18
 
 - **GIS 模式 preset 活体挂载验证通过（web profile）**：`agentPreset.list` API 实测
