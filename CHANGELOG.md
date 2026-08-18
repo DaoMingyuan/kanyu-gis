@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.54.0] — 2026-08-18
+
+- **整行属性替换移植（第五十八轮，kanyu-edit UpdateProperties → 组件）**：
+  EDIT_OPS 8→9 新增 `attributes-replace`（对齐 ops.rs:281）——`properties`
+  整体覆写（`null` = 清空属性表）；自逆算子，逆操作恢复旧属性（含原无
+  属性表的 null 态），redo 路径自动重算新鲜逆操作。kanyu_edit 描述与
+  args 示例同步补齐。
+- 测试器 166→**169**（+2 动态：整行覆写 3→1 字段、undo 自逆恢复旧属性行；
+  edit.ops 8→9）+ static 130→**133**（+1 契约键）；3080 生产桥
+  替换/撤销闭环实测通过。
+
 ## [0.53.0] — 2026-08-18
 
 - **挖洞算子移植（第五十七轮，kanyu-edit AddHole → 组件）**：EDIT_OPS 7→8

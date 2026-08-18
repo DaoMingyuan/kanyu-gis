@@ -59,7 +59,7 @@ const GP_TOOLS = [
 
 // 地理编辑算子（组件内 GeoJSON 编辑内核，自我迭代起点；
 // 深度拓扑编辑由 kanyu-edit crate 承接，本组件覆盖轻量在线编辑）
-const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'vertex-move', 'feature-move', 'hole-add']
+const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add']
 
 // ---------- 工具函数 ----------
 
@@ -724,6 +724,21 @@ return {
             const f = feats[i]
             return [i, !!(f && f.properties && a.field in f.properties), f && f.properties ? f.properties[a.field] : undefined]
           }) } } }
+      } else if (op === 'attributes-replace') {
+        // 整行属性替换（对齐 kanyu-edit UpdateProperties，ops.rs:281）：properties
+        // 整体覆写（null = 清空属性表）；自逆算子——逆操作即恢复旧属性
+        // （含原无属性表的 null 态），redo 路径自动重算新鲜逆操作
+        const i = Number(a.index)
+        const f = feats[i]
+        if (!f) return { ok: false, error: 'index 越界: ' + a.index }
+        if (a.properties !== null && (typeof a.properties !== 'object' || Array.isArray(a.properties))) {
+          return { ok: false, error: 'attributes-replace 需要 properties（对象或 null）' }
+        }
+        const old = f.properties === undefined ? null : f.properties
+        f.properties = a.properties === undefined ? null : a.properties
+        const n = f.properties ? Object.keys(f.properties).length : 0
+        return { ok: true, summary: '要素 #' + i + ' 属性已整行替换（' + n + ' 字段）',
+          inverse: { op: 'attributes-replace', args: { index: i, properties: old } } }
       } else if (op === 'hole-add') {
         // 面内挖洞（对齐 kanyu-edit AddHole，ops.rs:383）：index + part（Polygon 恒 0，
         // MultiPolygon 为子面下标）+ ring（未闭合自动闭合）；apply 先经 holeValidate
@@ -1418,11 +1433,11 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/vertex-move/hole-add；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/hole-add；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },
-        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
+        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"properties":{"name":"改"}}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
         inPlace: { type: 'boolean', description: 'true 原地覆盖（默认 false 写 .edited.geojson）' },
       },
       async execute(args) {

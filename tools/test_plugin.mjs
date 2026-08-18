@@ -198,6 +198,10 @@ async function main() {
   check('host.js hole-add 算子契约键（EDIT_OPS 入列 + hole-remove 逆操作 + AddHole 校验语义移植）',
     hostSrc.includes("'hole-add'") && hostSrc.includes("'hole-remove'")
       && hostSrc.includes('洞环须完全位于面内') && hostSrc.includes('洞环不得与外环或既有洞的边界相接'));
+  // 整行属性替换（2026-08-18 第五十八轮）：attributes-replace 对齐 kanyu-edit UpdateProperties
+  check('host.js attributes-replace 算子契约键（EDIT_OPS 入列 + 自逆操作 + UpdateProperties 移植）',
+    hostSrc.includes("'attributes-replace'") && hostSrc.includes('UpdateProperties')
+      && hostSrc.includes('属性已整行替换'));
   // kanyu_catalog 服务链接回执指引（2026-08-18 第三十四轮）：discover 用法指引 + fetch 接力提示 + xml/data 离线直通
   check('host.js kanyu_catalog 服务链接回执（discover 拉取指引 + fetch 接力提示 + xml/data 参数）',
     hostSrc.includes('拉取图层：本工具 url + layer=') && hostSrc.includes('接力检视/渲染/编辑')
@@ -565,7 +569,7 @@ async function main() {
 
   // ⑥ 地理编辑（能力 6）
   const ops = await callRpc('edit.ops');
-  check('edit.ops：8 算子（+hole-add）', ops.ok && ops.ops.length === 8 && ops.ops.includes('feature-move') && ops.ops.includes('hole-add'));
+  check('edit.ops：9 算子（+attributes-replace）', ops.ok && ops.ops.length === 9 && ops.ops.includes('hole-add') && ops.ops.includes('attributes-replace'));
   const cnt = await callRpc('edit.apply', { path: EXAMPLE, op: 'feature-count' });
   check('edit.apply feature-count = 4', cnt.ok && cnt.count === 4);
   const edited = await callRpc('edit.apply', { path: EXAMPLE, op: 'attribute-set', args: { field: 'dsh_test', value: 1 } });
@@ -654,6 +658,25 @@ async function main() {
   let holeBack = false;
   try { holeBack = JSON.parse(await fsp.readFile(hUndo.output, 'utf8')).features[0].geometry.coordinates.length === 1; } catch { /* 断言兜底 */ }
   check('hole-add undo：hole-remove 弹出末环（2→1 环，AddHole::revert 语义）', hUndo.ok && holeBack, hUndo.summary || hUndo.error);
+
+  // ⑥+++++ 整行属性替换（2026-08-18 第五十八轮）：attributes-replace 对齐 kanyu-edit UpdateProperties（ops.rs:281）
+  const arSrc = path.join(TMP_DIR, 'attr-replace-test.geojson');
+  await fsp.copyFile(path.join(REPO_ROOT, EXAMPLE), arSrc);
+  const arRel = path.relative(REPO_ROOT, arSrc);
+  const ar1 = await callRpc('edit.apply', { path: arRel, op: 'attributes-replace', args: { index: 0, properties: { name: '改' } } });
+  let arOk = false;
+  try {
+    const p0 = JSON.parse(await fsp.readFile(ar1.output, 'utf8')).features[0].properties;
+    arOk = Object.keys(p0).length === 1 && p0.name === '改';
+  } catch { /* 断言兜底 */ }
+  check('edit.apply attributes-replace：整行覆写（3 字段→1 字段）', ar1.ok && arOk, ar1.summary || ar1.error);
+  const arUndo = await callRpc('edit.undo', { path: arRel });
+  let arBack = false;
+  try {
+    const p0 = JSON.parse(await fsp.readFile(arUndo.output, 'utf8')).features[0].properties;
+    arBack = p0.name === '示例大厦A' && p0.height === 88.5; // 自逆操作恢复旧属性
+  } catch { /* 断言兜底 */ }
+  check('attributes-replace undo：自逆操作恢复旧属性行', arUndo.ok && arBack, arUndo.summary || arUndo.error);
 
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
