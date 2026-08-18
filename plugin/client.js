@@ -162,6 +162,18 @@ function TabCatalog(props) {
     } catch (e) { setLayMsg('RPC 失败: ' + (e && e.message || e)) }
     setLayBusy(false)
   }
+  // 地图框：点击渲染产物条目 → catalog.readImage 读盘 base64 内嵌预览
+  // （第五十轮；host 侧越界防护——仅限 dsh/output 产物目录内 .png）
+  const [mapImg, setMapImg] = React.useState(null)
+  const [mapImgMsg, setMapImgMsg] = React.useState('')
+  async function previewMapImage(it) {
+    setMapImgMsg('读取 ' + it.name + '…'); setMapImg(null)
+    try {
+      const r = await host.call('catalog.readImage', { path: it.path })
+      if (r && r.ok) { setMapImg('data:image/png;base64,' + r.png); setMapImgMsg('渲染产物: ' + r.name + '（' + Math.round(r.bytes / 1024) + 'KB）') }
+      else setMapImgMsg('读取失败: ' + (r && r.error || '未知'))
+    } catch (e) { setMapImgMsg('RPC 失败: ' + (e && e.message || e)) }
+  }
   function svcSection() {
     return h('div', null,
       h('div', { className: 'kyg-row' },
@@ -183,7 +195,8 @@ function TabCatalog(props) {
       size: it.size, onClick: clickable ? () => { store.path = it.path; props.notify() } : undefined })
     if (cat.name === '数据库') return (data.dbItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
     if (cat.name === '本机数据') return (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
-    if (cat.name === '地图框') return (data.mapItems || []).map(it => pick(it, 'PNG', it.name, false))
+    if (cat.name === '地图框') return (data.mapItems || []).map(it => ({ key: it.path || it.name, ext: 'PNG', text: it.name, size: it.size,
+      onClick: () => previewMapImage(it) }))
     if (cat.name === '布局框') return (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null,
       onClick: layBusy ? undefined : () => previewLayout(it) }))
     return []
@@ -221,6 +234,10 @@ function TabCatalog(props) {
     laySvg ? h('div', { className: 'kyg-layout-preview',
       style: { overflow: 'auto', maxHeight: '480px', border: '1px solid rgba(127,127,127,0.4)', borderRadius: '4px', marginTop: '6px' },
       dangerouslySetInnerHTML: { __html: laySvg } }) : null,
+    mapImgMsg ? h('div', { className: 'kyg-hint' }, mapImgMsg) : null,
+    mapImg ? h('button', { className: 'kyg-btn', onClick: () => { setMapImg(null); setMapImgMsg('') } }, '关闭产物预览') : null,
+    // 地图框渲染产物 PNG 内嵌预览（host 侧 catalog.readImage 读盘）
+    mapImg ? h('img', { className: 'kyg-img', src: mapImg }) : null,
   )
 }
 

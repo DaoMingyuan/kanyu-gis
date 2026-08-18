@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（27 个）', rpc.size === 27, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（28 个）', rpc.size === 28, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -191,6 +191,10 @@ async function main() {
   check('host.js render.layout 契约键（layoutPreview + kyu 清单解析 + svg 回传 + RPC 注册）',
     /async function layoutPreview[\s\S]*?manifest\.layers/.test(hostSrc)
       && hostSrc.includes(`harness.handle('render.layout'`) && hostSrc.includes('kyu: db.path'));
+  // catalog.readImage（2026-08-18 第五十轮）：产物目录越界防护 + base64 回传 + RPC 注册
+  check('host.js catalog.readImage 契约键（readImagePng + 产物目录边界 + RPC 注册）',
+    /async function readImagePng[\s\S]*?仅限 dsh\/output 产物目录内/.test(hostSrc)
+      && hostSrc.includes(`harness.handle('catalog.readImage'`));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -387,7 +391,19 @@ async function main() {
       layRpc.ok && layRpc.svg && layRpc.svg.includes('<svg') && layRpc.svg.includes('示例布局A4横')
         && layRpc.title === '示例布局A4横',
       layRpc.ok ? 'svg=' + (layRpc.svg || '').length : String(layRpc.error).slice(0, 120));
+    // catalog.readImage（2026-08-18 第五十轮）：render.map 产物读盘 → base64 回传
+    const rdImg = await callRpc('catalog.readImage', { path: render.out });
+    check('catalog.readImage：render.map 产物 PNG 读盘 base64 回传',
+      rdImg.ok && rdImg.png && rdImg.png.length > 500 && /\.png$/.test(rdImg.name || ''),
+      rdImg.ok ? 'bytes=' + rdImg.bytes : String(rdImg.error).slice(0, 100));
   }
+
+  // catalog.readImage 越界防护（第五十轮；不经 CLI，两种模式皆覆盖）：
+  // 产物目录外或非 .png 一律拒绝
+  const rdBad = await callRpc('catalog.readImage', { path: EXAMPLE });
+  check('catalog.readImage 边界：非产物目录 .png 拒绝（geojson 数据文件被拒）',
+    rdBad.ok === false && /仅限 dsh\/output 产物目录内/.test(String(rdBad.error)),
+    String(rdBad.error).slice(0, 80));
 
   // ④ 坐标框架（能力 3）
   const presets = await callRpc('crs.presets');
@@ -662,6 +678,11 @@ async function main() {
   check('client.js 目录布局框点击排版预览（previewLayout + render.layout + SVG 内嵌 + 关闭按钮）',
     layPvKeys.every((k) => clientSrc.includes(k)),
     layPvKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 目录地图框点击预览（2026-08-18 第五十轮）：catalog.readImage + PNG 内嵌 + 关闭按钮
+  const mapPvKeys = ['previewMapImage', 'catalog.readImage', '关闭产物预览'];
+  check('client.js 目录地图框点击产物预览（previewMapImage + catalog.readImage + PNG 内嵌）',
+    mapPvKeys.every((k) => clientSrc.includes(k)),
+    mapPvKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -738,10 +759,13 @@ async function main() {
   check('pkg/client.js 目录布局框点击排版预览（与动态半同契约）',
     layPvKeys.every((k) => pkgClientSrc.includes(k)),
     layPvKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 目录地图框点击产物预览（与动态半同契约）',
+    mapPvKeys.every((k) => pkgClientSrc.includes(k)),
+    mapPvKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 27 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 28 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
   // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
   // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）

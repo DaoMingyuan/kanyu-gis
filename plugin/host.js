@@ -390,9 +390,25 @@ return {
       }
     }
 
-    // ------ 能力 3：坐标框架 ------
-    async function crsReproject(path, from, to, output) {
+    // 地图框渲染产物读盘（catalog.readImage RPC，第五十轮）：PNG → base64，
+    // 供目录页签地图框条目内嵌预览。越界防护：仅限 dsh/output 产物目录内
+    // 的 .png——目录清单条目之外的任意路径读取一律拒绝。
+    async function readImagePng(path) {
       const p = await procPath(path)
+      const abs = fs.processPath(await fs.resolve(p))
+      const outAbs = fs.processPath(await fs.resolve(OUT_DIR))
+      const norm = (s) => String(s).replace(/\//g, '\\').toLowerCase()
+      if (!/\.png$/i.test(abs) || !norm(abs).startsWith(norm(outAbs) + '\\')) {
+        return { ok: false, error: '仅限 dsh/output 产物目录内的 .png（渲染产物预览边界）' }
+      }
+      try {
+        const bytes = await fs.readBytes(await fs.resolve(abs), undefined, 16 * 1024 * 1024)
+        return { ok: true, png: bytesToBase64(bytes), bytes: bytes.length, name: abs.split(/[\\/]/).pop() }
+      } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+    }
+
+    // ------ 能力 3：坐标框架 ------
+    async function crsReproject(path, from, to, output) {      const p = await procPath(path)
       const args = ['data', 'reproject', '--json', '--from', q(from), '--to', q(to)]
       // kanyu data reproject --output 底层 std::fs::write 不建父目录，先确保 dsh/output 存在
       if (output) { await ensureOutDir(); args.push('--output', q(await procPath(output))) }
@@ -915,6 +931,7 @@ return {
     harness.handle('data.calc', async (a) => dataCalc(a && a.path, a && a.target, a && a.expr, a && a.output))
     harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
     harness.handle('render.layout', async (a) => layoutPreview(a))
+    harness.handle('catalog.readImage', async (a) => readImagePng(a && a.path))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))
