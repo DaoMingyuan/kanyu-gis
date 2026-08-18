@@ -1,5 +1,15 @@
 # dsh/ 组件变更记录
 
+## [0.66.0] — 2026-08-19
+
+- **技能画布交互（第七十轮，WASM 技能入编辑页签对话框）**：双端 client.js
+  编辑页签新增「技能分析」区——缓冲区（距离输入 → `buffer_zones.wasm`
+  param `_distance` 注入）/ 叠加分析（算子下拉 intersect/union/difference +
+  第二图层路径 → `overlay_ops.wasm` param `_op` + input2 注入）；公共
+  `skillRelay` 产图层接力（落 dsh/output → 设为当前图层 + 版本号广播 +
+  几何重载，同 applyCutPoly 语义），失败回执直通技能中文业务错误。
+- 测试器 203→**205** / static 156→**158**（+2 双端技能对话框契约键）。
+
 ## [0.65.0] — 2026-08-19
 
 - **叠加分析 WASM 技能（第六十九轮，技能沙箱第三算子）**：新 guest crate

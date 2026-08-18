@@ -1184,6 +1184,45 @@ window.__ModuleLoader__.load({
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // 技能分析对话框（WASM 沙箱，2026-08-19 第七十轮）：缓冲区（buffer_zones
+      // _distance）/ 叠加分析（overlay_ops _op + 第二图层）；param/input2 注入通道，
+      // 产出落 dsh/output 接力当前图层（同 applyCutPoly 产图层联动语义）
+      const [bufDist, setBufDist] = React.useState('')
+      const [ovlOp, setOvlOp] = React.useState('intersect')
+      const [ovlPath2, setOvlPath2] = React.useState('')
+      async function skillRelay(r, outPath, label) {
+        if (r && r.ok) {
+          store.path = outPath; setPath(outPath)
+          store.rev++; props.notify() // 版本号广播（同 afterEdit 语义）
+          setAttrs(null)
+          setOut(label + '完成 → 已设为当前图层: ' + outPath)
+          const g2 = await hostCall('edit.geometry', { path: outPath, maxFeatures: 200 })
+          if (g2 && g2.ok) setGeo(g2)
+        } else {
+          setOut(label + '失败: ' + String(r && (r.stderr || r.error) || '未知').slice(0, 400))
+          drawOverlay()
+        }
+        setBusy(false)
+      }
+      async function applyBuffer() {
+        const d = parseFloat(bufDist)
+        if (!(d > 0)) { setOut('缓冲距离须为正数（当前: ' + (bufDist || '空') + '）'); return }
+        const outPath = 'dsh/output/kanyu-buffer-' + Date.now() + '.geojson'
+        setBusy(true); setOut('缓冲区分析中（距离 ' + d + '）…')
+        try {
+          const r = await hostCall('skill.run', { skill: 'dsh/skills/buffer_zones.wasm', input: path, output: outPath, param: { _distance: d } })
+          await skillRelay(r, outPath, '缓冲区')
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
+      }
+      async function applyOverlay() {
+        if (!ovlPath2) { setOut('叠加分析需要第二图层路径（叠加层）'); return }
+        const outPath = 'dsh/output/kanyu-overlay-' + Date.now() + '.geojson'
+        setBusy(true); setOut('叠加分析中（' + ovlOp + ' ← ' + ovlPath2 + '）…')
+        try {
+          const r = await hostCall('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: path, input2: ovlPath2, output: outPath, param: { _op: ovlOp } })
+          await skillRelay(r, outPath, '叠加分析')
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
+      }
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         Field('算子', h('select', { className: 'kyg-input', value: op, onChange: e => { setOp(e.target.value); setArgsText(HINTS[e.target.value] || '{}') } },
@@ -1273,6 +1312,17 @@ window.__ModuleLoader__.load({
                 : drawMode === 'addPolygon'
                   ? '绘制面：逐点点击 ≥3 点后「应用绘制面」（feature-add Polygon，自动闭合）'
                   : '面切割：逐点点击 ≥2 点成切割线后「应用面切割」（split_polygons.wasm 技能劈开全部横贯面，产出新图层；原数据不动）') : null,
+        h('div', { className: 'kyg-hint' }, '—— 技能分析（WASM 沙箱，产出接力当前图层）——'),
+        h('div', { className: 'kyg-row' },
+          h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: bufDist, placeholder: '缓冲距离（地图单位，> 0）', onChange: e => setBufDist(e.target.value) }),
+          h('button', { className: 'kyg-btn', disabled: busy || !path || !bufDist, onClick: applyBuffer }, '缓冲区')),
+        h('div', { className: 'kyg-row' },
+          h('select', { className: 'kyg-input', style: { maxWidth: '26%' }, value: ovlOp, onChange: e => setOvlOp(e.target.value) },
+            h('option', { value: 'intersect' }, '相交 intersect'),
+            h('option', { value: 'union' }, '合并 union'),
+            h('option', { value: 'difference' }, '差集 difference')),
+          h('input', { className: 'kyg-input', value: ovlPath2, placeholder: '第二图层路径（叠加层，GeoJSON）', onChange: e => setOvlPath2(e.target.value) }),
+          h('button', { className: 'kyg-btn', disabled: busy || !path || !ovlPath2, onClick: applyOverlay }, '叠加分析')),
         h(ResultPre, { text: out }),
       )
     }

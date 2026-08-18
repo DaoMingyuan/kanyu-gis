@@ -1035,6 +1035,11 @@ async function main() {
   check('client.js 面切割画布模式（cutPoly 攒切割线 + applyCutPoly 走 skill.run WASM 技能）',
     editCutKeys.every((k) => clientSrc.includes(k)),
     editCutKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 技能分析对话框（2026-08-19 第七十轮）：缓冲区/叠加分析 + skillRelay 产图层接力
+  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-'];
+  check('client.js 技能分析对话框（缓冲区距离 + 叠加算子/第二图层 + skillRelay 接力当前图层）',
+    skillDlgKeys.every((k) => clientSrc.includes(k)),
+    skillDlgKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -1161,6 +1166,9 @@ async function main() {
   check('pkg/client.js 面切割画布模式（与动态半同契约）',
     editCutKeys.every((k) => pkgClientSrc.includes(k)),
     editCutKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 技能分析对话框（与动态半同契约）',
+    skillDlgKeys.every((k) => pkgClientSrc.includes(k)),
+    skillDlgKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
