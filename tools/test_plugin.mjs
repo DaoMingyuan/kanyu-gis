@@ -896,6 +896,11 @@ async function main() {
   check('client.js 顶点画布拓扑模式开关（topoMode + vUp 松开写 topo-move 分支）',
     editTopoKeys.every((k) => clientSrc.includes(k)),
     editTopoKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 挖洞/打断画布交互（2026-08-18 第六十三轮）：drawMode + 攒点覆盖层 + applyHole/doSplitPoint
+  const editDrawKeys = ['drawMode', 'toggleDraw', 'drawOverlay', 'applyHole', 'doSplitPoint', '绘制挖洞', '点选打断', '应用挖洞（'];
+  check('client.js 挖洞/打断画布交互（drawMode 分派 + 攒点覆盖层 + 两算子接线）',
+    editDrawKeys.every((k) => clientSrc.includes(k)),
+    editDrawKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -1010,6 +1015,9 @@ async function main() {
   check('pkg/client.js 顶点画布拓扑模式开关（与动态半同契约）',
     editTopoKeys.every((k) => pkgClientSrc.includes(k)),
     editTopoKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 挖洞/打断画布交互（与动态半同契约）',
+    editDrawKeys.every((k) => pkgClientSrc.includes(k)),
+    editDrawKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
