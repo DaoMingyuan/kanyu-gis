@@ -59,7 +59,7 @@ const GP_TOOLS = [
 
 // 地理编辑算子（组件内 GeoJSON 编辑内核，自我迭代起点；
 // 深度拓扑编辑由 kanyu-edit crate 承接，本组件覆盖轻量在线编辑）
-const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'vertex-move', 'feature-move']
+const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'vertex-move', 'feature-move', 'hole-add']
 
 // ---------- 工具函数 ----------
 
@@ -612,7 +612,56 @@ return {
     }
     // 单一变更入口：正/逆向共用。返回 { ok, error?, summary?, inverse? }，
     // inverse 为结构化逆操作（{ op, args }），仅变更算子产生。
-    // feature-insert / attribute-restore 为逆操作内部算子，不进 EDIT_OPS 公开清单。
+    // feature-insert / attribute-restore / hole-remove 为逆操作内部算子，不进 EDIT_OPS 公开清单。
+    // —— AddHole 挖洞校验移植（kanyu-edit ops.rs:330-436 语义 JS 化）——
+    // 点-环关系：'in'/'out'/'on'（射线法 + 边界检测，容差 1e-12）
+    function pointRingRel(p, ring) {
+      let inside = false
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a2 = ring[i], b2 = ring[j]
+        const cross = (b2[0] - a2[0]) * (p[1] - a2[1]) - (b2[1] - a2[1]) * (p[0] - a2[0])
+        if (Math.abs(cross) < 1e-12
+          && Math.min(a2[0], b2[0]) - 1e-12 <= p[0] && p[0] <= Math.max(a2[0], b2[0]) + 1e-12
+          && Math.min(a2[1], b2[1]) - 1e-12 <= p[1] && p[1] <= Math.max(a2[1], b2[1]) + 1e-12) return 'on'
+        if ((a2[1] > p[1]) !== (b2[1] > p[1])
+          && p[0] < (b2[0] - a2[0]) * (p[1] - a2[1]) / (b2[1] - a2[1]) + a2[0]) inside = !inside
+      }
+      return inside ? 'in' : 'out'
+    }
+    // 线段任意相交（含端点相接/共线重叠——内核按 covers 语义放行边界重叠后显式判负）
+    function segTouch(p1, p2, p3, p4) {
+      const dd = (a2, b2, c2) => (b2[0] - a2[0]) * (c2[1] - a2[1]) - (b2[1] - a2[1]) * (c2[0] - a2[0])
+      const d1 = dd(p3, p4, p1), d2 = dd(p3, p4, p2), d3 = dd(p1, p2, p3), d4 = dd(p1, p2, p4)
+      if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true
+      const on = (a2, b2, c2) => Math.abs(dd(a2, b2, c2)) < 1e-12
+        && Math.min(a2[0], b2[0]) - 1e-12 <= c2[0] && c2[0] <= Math.max(a2[0], b2[0]) + 1e-12
+        && Math.min(a2[1], b2[1]) - 1e-12 <= c2[1] && c2[1] <= Math.max(a2[1], b2[1]) + 1e-12
+      return on(p3, p4, p1) || on(p3, p4, p2) || on(p1, p2, p3) || on(p1, p2, p4)
+    }
+    // 洞环合法性：顶点严格在外环内 + 不落在既有洞内 + 边不与外环/既有洞边界相接
+    function holeValidate(rings, ring) {
+      const ext = rings[0]
+      if (!Array.isArray(ext) || ext.length < 4) return '目标面外环为空'
+      for (const p of ring) {
+        if (pointRingRel(p, ext) !== 'in') return '洞环须完全位于面内（不越出外环、不与既有洞相交）'
+      }
+      for (let e = 0; e < ring.length - 1; e++) {
+        for (let k = 0; k < ext.length - 1; k++) {
+          if (segTouch(ring[e], ring[e + 1], ext[k], ext[k + 1])) return '洞环不得与外环或既有洞的边界相接'
+        }
+      }
+      for (const hole of rings.slice(1)) {
+        for (const p of ring) {
+          if (pointRingRel(p, hole) !== 'out') return '洞环须完全位于面内（不越出外环、不与既有洞相交）'
+        }
+        for (let e = 0; e < ring.length - 1; e++) {
+          for (let k = 0; k < hole.length - 1; k++) {
+            if (segTouch(ring[e], ring[e + 1], hole[k], hole[k + 1])) return '洞环不得与外环或既有洞的边界相接'
+          }
+        }
+      }
+      return null
+    }
     function applyMutation(fc, op, a) {
       const feats = fc.features
       if (op === 'feature-delete') {
@@ -675,6 +724,44 @@ return {
             const f = feats[i]
             return [i, !!(f && f.properties && a.field in f.properties), f && f.properties ? f.properties[a.field] : undefined]
           }) } } }
+      } else if (op === 'hole-add') {
+        // 面内挖洞（对齐 kanyu-edit AddHole，ops.rs:383）：index + part（Polygon 恒 0，
+        // MultiPolygon 为子面下标）+ ring（未闭合自动闭合）；apply 先经 holeValidate
+        // 校验（洞环完全位于面内、不与外环/既有洞边界相接），逆操作弹出末环
+        const i = Number(a.index)
+        const f = feats[i]
+        if (!f) return { ok: false, error: 'index 越界: ' + a.index }
+        const g = f.geometry
+        const part = Number(a.part) || 0
+        if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) {
+          return { ok: false, error: '目标要素不是面几何——洞只能加在 Polygon/MultiPolygon 上' }
+        }
+        if (g.type === 'Polygon' && part !== 0) return { ok: false, error: '子面下标越界: part ' + part + '（单面恒 0）' }
+        const rings = g.type === 'Polygon' ? g.coordinates : g.coordinates[part]
+        if (!Array.isArray(rings)) return { ok: false, error: '子面下标越界: part ' + part }
+        let ring = Array.isArray(a.ring) ? a.ring.map((p) => [Number(p[0]), Number(p[1])]) : []
+        if (ring.length < 3) return { ok: false, error: '洞环至少需要 3 个顶点（闭合后 4 点）' }
+        const h0 = ring[0], hl = ring[ring.length - 1]
+        if (h0[0] !== hl[0] || h0[1] !== hl[1]) ring = ring.concat([h0.slice()]) // 自动闭合兜底
+        const verr = holeValidate(rings, ring)
+        if (verr) return { ok: false, error: verr }
+        rings.push(ring)
+        return { ok: true, summary: '要素 #' + i + ' 已挖洞（' + ring.length + ' 点，共 ' + rings.length + ' 环）',
+          inverse: { op: 'hole-remove', args: { index: i, part } } }
+      } else if (op === 'hole-remove') {
+        // hole-add 逆操作内部算子（对齐 AddHole::revert）：apply 追加在尾部，逆回即弹出末环
+        const i = Number(a.index)
+        const f = feats[i]
+        if (!f) return { ok: false, error: 'index 越界: ' + a.index }
+        const g = f.geometry
+        const part = Number(a.part) || 0
+        if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) return { ok: false, error: '目标要素不是面几何' }
+        const rings = g.type === 'Polygon' ? g.coordinates : g.coordinates[part]
+        if (!Array.isArray(rings)) return { ok: false, error: '子面下标越界: part ' + part }
+        if (rings.length < 2) return { ok: false, error: '面无内环，无法逆回挖洞' }
+        const popped = rings.pop()
+        return { ok: true, summary: '要素 #' + i + ' 末环已弹出（余 ' + rings.length + ' 环）',
+          inverse: { op: 'hole-add', args: { index: i, part, ring: popped } } }
       } else if (op === 'feature-move') {
         // 整要素平移（对齐 kanyu-edit MoveFeature {index,dx,dy}，ops.rs:166）
         const i = Number(a.index)
@@ -1331,11 +1418,11 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/vertex-move；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/vertex-move/hole-add；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },
-        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}）' },
+        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
         inPlace: { type: 'boolean', description: 'true 原地覆盖（默认 false 写 .edited.geojson）' },
       },
       async execute(args) {

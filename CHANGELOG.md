@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.53.0] — 2026-08-18
+
+- **挖洞算子移植（第五十七轮，kanyu-edit AddHole → 组件）**：EDIT_OPS 7→8
+  新增 `hole-add` 面内挖洞（对齐 ops.rs:383 AddHole）——`ring` 未闭合自动闭合
+  兜底，`holeValidate` 校验语义完整移植：洞环顶点严格位于外环内（射线法 +
+  边界检测 `pointRingRel`）、不落在既有洞内、边不与外环/既有洞边界相接
+  （`segTouch` 任意相交含端点/共线判负）；`part` Polygon 恒 0、MultiPolygon
+  为子面下标，越界中文报错不改动集合。逆操作内部算子 `hole-remove` 弹出
+  末环（AddHole::revert 语义）。kanyu_edit 描述与 args 示例同步补齐。
+- 测试器 162→**166**（+3 动态：挖洞闭环 1→2 环、越界拒绝、undo 弹出末环；
+  edit.ops 计数 7→8）+ static 126→**130**（+1 契约键）；3080 生产桥
+  hole-add 挖洞/撤销闭环实测通过。
+
 ## [0.52.0] — 2026-08-18
 
 - **编辑算子对照盘点补齐（第五十六轮，组件 EDIT_OPS ↔ kanyu-edit 全量比对）**：
