@@ -1166,12 +1166,15 @@ function TabEdit(props) {
     setBusy(false)
   }
   // 技能分析对话框（WASM 沙箱，2026-08-19 第七十轮）：缓冲区（buffer_zones
-  // _distance）/ 叠加分析（overlay_ops _op + 第二图层）；param/input2 注入通道，
+  // _distance）/ 叠加分析（overlay_ops _op + 第二图层）/ 融合（dissolve_field
+  // _field）/ 统计（stat_summary _stat + 可选 _field 分组）；param/input2 注入通道，
   // 产出落 dsh/output 接力当前图层（同 applyCutPoly 产图层联动语义）
   const [bufDist, setBufDist] = React.useState('')
   const [ovlOp, setOvlOp] = React.useState('intersect')
   const [ovlPath2, setOvlPath2] = React.useState('')
   const [disField, setDisField] = React.useState('')
+  const [statField, setStatField] = React.useState('')
+  const [statGroup, setStatGroup] = React.useState('')
   async function skillRelay(r, outPath, label) {
     if (r && r.ok) {
       store.path = outPath; setPath(outPath)
@@ -1212,6 +1215,17 @@ function TabEdit(props) {
     try {
       const r = await host.call('skill.run', { skill: 'dsh/skills/dissolve_field.wasm', input: path, output: outPath, param: { _field: disField } })
       await skillRelay(r, outPath, '融合')
+    } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
+  }
+  async function applyStat() {
+    if (!statField) { setOut('统计需要数值字段名（_stat）'); return }
+    const outPath = 'dsh/output/kanyu-stat-' + Date.now() + '.geojson'
+    const param = { _stat: statField }
+    if (statGroup) param._field = statGroup
+    setBusy(true); setOut('统计汇总中（' + statField + (statGroup ? ' 按 ' + statGroup + ' 分组' : ' 全表一组') + '）…')
+    try {
+      const r = await host.call('skill.run', { skill: 'dsh/skills/stat_summary.wasm', input: path, output: outPath, param })
+      await skillRelay(r, outPath, '统计')
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
   }
   return h('div', null,
@@ -1317,6 +1331,10 @@ function TabEdit(props) {
     h('div', { className: 'kyg-row' },
       h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: disField, placeholder: '融合分组字段名（面要素按值合并）', onChange: e => setDisField(e.target.value) }),
       h('button', { className: 'kyg-btn', disabled: busy || !path || !disField, onClick: applyDissolve }, '融合')),
+    h('div', { className: 'kyg-row' },
+      h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: statField, placeholder: '统计数值字段名（_stat）', onChange: e => setStatField(e.target.value) }),
+      h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: statGroup, placeholder: '分组字段名（可选，缺省全表一组）', onChange: e => setStatGroup(e.target.value) }),
+      h('button', { className: 'kyg-btn', disabled: busy || !path || !statField, onClick: applyStat }, '统计')),
     h(ResultPre, { text: out }),
   )
 }

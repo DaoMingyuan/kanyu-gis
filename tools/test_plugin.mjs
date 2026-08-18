@@ -874,6 +874,31 @@ async function main() {
   check('skill.run 融合：param _field 注入 + dissolve_field.wasm 分组合并（相邻并 1 部 / 相离附 _part，_count=2）', ds1.ok && dsOk, String(ds1.stderr || ds1.error || '').slice(0, 120));
   const dsNoField = await callRpc('skill.run', { skill: 'dsh/skills/dissolve_field.wasm', input: disRel });
   check('skill.run 融合校验：缺 param._field 中文报错（guest 契约）', !dsNoField.ok && /未找到融合参数/.test(dsNoField.stderr || ''), String(dsNoField.stderr || '').slice(0, 120));
+
+  // ⑥++++++++++++++ 统计 WASM 技能（2026-08-19 第七十四轮）：stat_summary guest（纯属性聚合，geometry:null 表语义）
+  // 混合类型列（数值 + "bad" 字符串）经宿主 GeoArrow 类型化列强制为字符串列——兼测 guest 数值字符串兼容解析
+  const statSrc = path.join(TMP_DIR, 'stat-test.geojson');
+  await fsp.writeFile(statSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [5, 0], [5, 5], [0, 5], [0, 0]]] }, properties: { zone: 'A', height: 10 } },
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[5, 0], [10, 0], [10, 5], [5, 5], [5, 0]]] }, properties: { zone: 'A', height: 30 } },
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[20, 20], [25, 20], [25, 25], [20, 25], [20, 20]]] }, properties: { zone: 'B', height: 50 } },
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[30, 30], [35, 30], [35, 35], [30, 35], [30, 30]]] }, properties: { zone: 'B', height: 'bad' } },
+  ] }));
+  const statRel = path.relative(REPO_ROOT, statSrc);
+  const statOut = path.join(TMP_DIR, 'stat-out.geojson');
+  const st1 = await callRpc('skill.run', { skill: 'dsh/skills/stat_summary.wasm', input: statRel, output: path.relative(REPO_ROOT, statOut), param: { _stat: 'height', _field: 'zone' } });
+  let stOk = false;
+  try {
+    const fs14 = JSON.parse(await fsp.readFile(statOut, 'utf8')).features;
+    const sa = fs14.find(f => f.properties.zone === 'A');
+    const sb = fs14.find(f => f.properties.zone === 'B');
+    stOk = fs14.length === 2 && fs14.every(f => f.geometry === null)
+      && sa && sa.properties._count === 2 && sa.properties._avg === 20 && sa.properties._min === 10 && sa.properties._max === 30
+      && sb && sb.properties._count === 1 && sb.properties._skipped === 1 && sb.properties._sum === 50;
+  } catch { /* 断言兜底 */ }
+  check('skill.run 统计：param _stat/_field 注入 + stat_summary.wasm 分组聚合（A 组 _count=2/_avg=20，B 组 "bad" 跳过 _skipped=1）', st1.ok && stOk, String(st1.stderr || st1.error || '').slice(0, 120));
+  const stNoStat = await callRpc('skill.run', { skill: 'dsh/skills/stat_summary.wasm', input: statRel });
+  check('skill.run 统计校验：缺 param._stat 中文报错（guest 契约）', !stNoStat.ok && /未找到统计参数/.test(stNoStat.stderr || ''), String(stNoStat.stderr || '').slice(0, 120));
   }
 
   // ⑦ 3D 地理（能力 7）
@@ -1069,7 +1094,7 @@ async function main() {
     editCutKeys.every((k) => clientSrc.includes(k)),
     editCutKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 技能分析对话框（2026-08-19 第七十轮）：缓冲区/叠加分析 + skillRelay 产图层接力
-  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-'];
+  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-'];
   check('client.js 技能分析对话框（缓冲区距离 + 叠加算子/第二图层 + skillRelay 接力当前图层）',
     skillDlgKeys.every((k) => clientSrc.includes(k)),
     skillDlgKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');

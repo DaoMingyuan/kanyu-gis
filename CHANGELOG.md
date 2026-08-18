@@ -1,5 +1,17 @@
 # dsh/ 组件变更记录
 
+## [0.70.0] — 2026-08-19
+
+- **统计聚合 WASM 技能（第七十四轮）**：新 guest `stat_summary`（第五算子）
+  ——param 注入 `_stat` 必填数值字段 + `_field` 可选分组字段，纯属性聚合
+  输出 geometry:null 表语义要素（`_count/_skipped/_sum/_min/_max/_avg`）。
+  调试中发现并修复宿主侧隐蔽行为：混合类型列（数值+字符串）经 GeoArrow
+  类型化列中转被强制为字符串列，guest 兼容解析数值字符串（"10"→10），
+  真正非数值跳过计 `_skipped`。host.js `kanyu_skill` 清单+param 说明登记；
+  双端 client.js 技能分析区加统计行（数值字段 + 可选分组字段 + skillRelay 接力）。
+- 测试器 211→**213**（+2 统计功能实测与缺参契约）/ static **162** 不变
+  （skillDlgKeys 扩 `applyStat`/`stat_summary.wasm`/`kanyu-stat-` 契约键）。
+
 ## [0.69.0] — 2026-08-19
 
 - **3D 视角书签持久化（第七十三轮）**：双端 TabScene3d 书签改 localStorage
