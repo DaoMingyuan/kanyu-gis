@@ -833,6 +833,7 @@ return {
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
     harness.handle('data.preview', async (a) => dataPreview(a && a.path, a && a.limit))
+    harness.handle('data.calc', async (a) => dataCalc(a && a.path, a && a.target, a && a.expr, a && a.output))
     harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))

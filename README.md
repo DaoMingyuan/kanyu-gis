@@ -19,7 +19,7 @@
 ## 双半差异白名单（第四十二轮盘点）
 
 动态半（`plugin/client.js`）与静态半（`pkg/client.js`）能力面实测一致：RPC
-方法集 18 = 18 零独有（测试器对称锁）、页签 8/8 相同。仅存四处**设计意图
+方法集 19 = 19 零独有（测试器对称锁）、页签 8/8 相同。仅存四处**设计意图
 差异**，改动任一半时不需对齐：
 
 | 差异 | 动态半 | 静态半 | 原因 |
@@ -40,7 +40,7 @@
 | 坐标框架 | `kanyu_crs` | `kanyu crs search/info`（EPSG 全库 7507 条检索/检视）+ `kanyu data reproject`（投影变换落盘 dsh/output + 设为当前图层联动；模型侧 reproject+output 计数回执） |
 | 工程目录 | Client 目录页签 | `catalog.list` RPC（扩展名矩阵对齐 `format.rs`）+ freshness 自动重扫（清单外新当前图层触发） |
 | 地理处理 | `kanyu_geoprocess` | `kanyu analysis <13 工具>`（QGIS 语义，精选白名单）+ `kanyu tool list/run`（tooldef 37 工具注册表全库，与壳层工具箱/MCP 同一事实来源）；双端处理页签 ToolboxPanel 全库表单（五分类分组 + ParamKind 动态表单 + 产图层工具缺省落盘 dsh/output 并设为当前图层联动）；模型侧双分支产出回执（stderr 写出清单） |
-| 地理编辑 | `kanyu_edit` | 组件内 GeoJSON 编辑内核（6 算子 + 命令逆操作双栈 undo/redo，对齐 `kanyu-edit` 范式；回执附撤销/重做栈深度）+ 属性单元格编辑（点选行写入）+ 顶点编辑画布（拖拽写 vertex-move）+ 联动刷新（应用/撤销/重做后属性表作废 + 画布重载 + 产出路径广播）；深度拓扑编辑由 `kanyu-edit` crate 承接 |
+| 地理编辑 | `kanyu_edit` | 组件内 GeoJSON 编辑内核（6 算子 + 命令逆操作双栈 undo/redo，对齐 `kanyu-edit` 范式；回执附撤销/重做栈深度）+ 属性单元格编辑（点选行写入）+ 字段计算器 ƒx 区（`data.calc` RPC → `kanyu data calc`，前 5 行预览 + 应用落盘联动）+ 顶点编辑画布（拖拽写 vertex-move）+ 联动刷新（应用/撤销/重做后属性表作废 + 画布重载 + 产出路径广播）；深度拓扑编辑由 `kanyu-edit` crate 承接 |
 | 3D 地理 | `kanyu_scene3d` | 挤出体场景数据制备（高度字段拉伸 + colorField 分类着色 ≤12 类 + heightRange 高度范围摘要；回执附工作台 3D 页签接力指引）+ Client canvas 软件 3D 管线（对齐 scene3d.rs：yaw/pitch 拖拽旋转/背面剔除/质心纵深排序/两档明暗/类别色+图例）+ 联动重载（store.rev 跟随，编辑/图层切换后已加载场景自动重载） |
 
 另注册 `kanyu_introspect`（系统自省，对齐 `kanyu introspect --json`）。

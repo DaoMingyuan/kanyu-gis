@@ -775,6 +775,40 @@ window.__ModuleLoader__.load({
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // 字段计算器（壳层 attrtable.rs preview_calc 语义：前 5 行求值预览；应用走
+      // data.calc RPC → kanyu data calc 出口；inPlace 原地覆盖，否则写 .edited.geojson）
+      const [calcTarget, setCalcTarget] = React.useState('')
+      const [calcExpr, setCalcExpr] = React.useState('')
+      const [calcPrev, setCalcPrev] = React.useState('')
+      async function calcPreview() {
+        setBusy(true); setOut('计算预览…')
+        try {
+          const r = await hostCall('data.calc', { path, target: calcTarget, expr: calcExpr })
+          if (r && r.ok) {
+            const fc = JSON.parse(r.stdout.slice(r.stdout.search(/[{[]/)))
+            const vals = fc.features.slice(0, 5).map(f => String((f.properties && f.properties[calcTarget]) ?? 'null'))
+            setCalcPrev(vals.join(' | '))
+            setOut('预览就绪（共 ' + fc.features.length + ' 要素，应用后全量写入 ' + calcTarget + '）')
+          } else { setCalcPrev(''); setOut('表达式错误: ' + String((r && r.stderr) || '未知').slice(0, 300)) }
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
+      async function calcApply() {
+        const nextPath = inPlace ? path : path.replace(/\.geojson$/i, '') + '.edited.geojson'
+        setBusy(true); setOut('字段计算应用中…')
+        try {
+          const r = await hostCall('data.calc', { path, target: calcTarget, expr: calcExpr, output: nextPath })
+          if (r && r.ok) {
+            const m = /已写出 (\d+) 个要素/.exec(r.stderr || '')
+            setOut('字段计算完成（' + calcTarget + '）：' + (m ? m[1] : '?') + ' 要素 → ' + nextPath)
+            if (nextPath !== path) { store.path = nextPath; setPath(nextPath) }
+            setAttrs(null)
+            if (geo) { const g2 = await hostCall('edit.geometry', { path: nextPath, maxFeatures: 200 }); if (g2 && g2.ok) setGeo(g2) }
+            store.rev++; props.notify()
+          } else setOut('字段计算失败: ' + String((r && r.stderr) || '未知').slice(0, 300))
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         Field('算子', h('select', { className: 'kyg-input', value: op, onChange: e => { setOp(e.target.value); setArgsText(HINTS[e.target.value] || '{}') } },
@@ -803,6 +837,14 @@ window.__ModuleLoader__.load({
           h('input', { className: 'kyg-input', style: { maxWidth: '30%' }, value: attrField, placeholder: '字段名', onChange: e => setAttrField(e.target.value) }),
           h('input', { className: 'kyg-input', value: attrValue, placeholder: '新值（JSON 可解析则按类型写入）', onChange: e => setAttrValue(e.target.value) }),
           h('button', { className: 'kyg-btn', disabled: busy || attrIdx < 0 || !attrField, onClick: applyAttr }, '写入单元格')) : null,
+        h('div', { className: 'kyg-hint' }, '—— 字段计算器（attrcalc 内核，含前 5 行预览）——'),
+        h('div', { className: 'kyg-row' },
+          h('input', { className: 'kyg-input', style: { maxWidth: '30%' }, value: calcTarget, placeholder: '目标字段（不存在则新建）', onChange: e => setCalcTarget(e.target.value) }),
+          h('input', { className: 'kyg-input', value: calcExpr, placeholder: '表达式：如 [height] * 2 或 $area / 10000', onChange: e => setCalcExpr(e.target.value) })),
+        h('div', { className: 'kyg-row' },
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path || !calcTarget || !calcExpr, onClick: calcPreview }, '预览前 5 行'),
+          h('button', { className: 'kyg-btn', disabled: busy || !path || !calcTarget || !calcExpr, onClick: calcApply }, '应用')),
+        calcPrev ? h('div', { className: 'kyg-hint' }, '预览（前 5 行）: ' + calcPrev) : null,
         h('div', { className: 'kyg-hint' }, '—— 顶点编辑 ——'),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: loadGeo }, '加载几何'),

@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（25 个）', rpc.size === 25, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（26 个）', rpc.size === 26, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -328,6 +328,11 @@ async function main() {
     check('动态工具 kanyu_data(calc 错误表达式)：失败回执非空（解析错误带中文提示）',
       typeof kcalcErr === 'string' && /失败/.test(kcalcErr),
       String(kcalcErr).slice(0, 120));
+    // data.calc RPC（2026-08-18 第四十四轮）：工作台 ƒx 区依赖面——stdout GeoJSON 直通
+    const dcalc = await callRpc('data.calc', { path: EXAMPLE, target: 'h2', expr: '[height] * 2' });
+    check('data.calc RPC：calc 直通（stdout 含 "h2":177，工作台预览/应用同源）',
+      dcalc.ok && /"h2":\s*177/.test(dcalc.stdout),
+      (dcalc.stdout || '').slice(0, 60));
     // kanyu_crs reproject 回执计数（2026-08-18 第三十轮，CLI 依赖）：模型侧对齐 runReproject 语义
     const tCrs = tools.get('kanyu_crs');
     const kcOut = path.join(TMP_DIR, 'kanyu-crs-reproject.geojson');
@@ -583,6 +588,11 @@ async function main() {
   check('client.js 编辑页签顶点编辑画布（edit.geometry + enumVertices + drawEdit2d）',
     editVertKeys.every((k) => clientSrc.includes(k)),
     editVertKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 编辑页签字段计算器 ƒx 区（2026-08-18 第四十四轮）：data.calc + 前 5 行预览 + 应用落盘联动
+  const editCalcKeys = ['calcPreview', 'calcApply', '预览前 5 行', 'data.calc', '字段计算完成（'];
+  check('client.js 编辑页签字段计算器区（calcPreview/calcApply + 前 5 行预览 + 应用确认回执）',
+    editCalcKeys.every((k) => clientSrc.includes(k)),
+    editCalcKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -669,6 +679,9 @@ async function main() {
   check('pkg/client.js 编辑页签顶点编辑画布（与动态半同契约）',
     editVertKeys.every((k) => pkgClientSrc.includes(k)),
     editVertKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 编辑页签字段计算器区（与动态半同契约）',
+    editCalcKeys.every((k) => pkgClientSrc.includes(k)),
+    editCalcKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
@@ -696,7 +709,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 25 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 26 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
   // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
   // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）

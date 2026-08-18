@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.41.0] — 2026-08-18
+
+- **字段计算器 UI 面板（双端编辑页签 ƒx 区）**：host 半新增 `data.calc` RPC
+  （dataCalc 助手提为 RPC，上轮模型侧 kanyu_data action=calc 同源）——RPC
+  表 25→26；双端 Client 编辑页签新增「字段计算器」区：目标字段 + 表达式
+  输入、「预览前 5 行」（无 output 全量求值后取前 5 行目标值，对齐壳层
+  attrtable.rs preview_calc 语义）与「应用」（inPlace 原地覆盖，否则写
+  .edited.geojson；成功回执带要素数 → 路径广播 + 属性表作废 + 顶点画布
+  重载 + store.rev++ 全联动）。两半 RPC 面对称锁随动 19=19。
+- **测试器 +3 断言**（data.calc RPC 直通 + 双端 ƒx 契约键）；总计
+  **122/122 全绿**（static 95/95）。3080 生产桥实测 data.calc 通过
+  （ASCII 路径；中文绝对路径经 shell 桥 GBK 乱码为既有跨 RPC 限制，
+  入下轮候选）。
+
 ## [0.40.0] — 2026-08-18
 
 - **字段计算器出口（attrcalc 内核 → CLI → 组件模型侧）**：主仓新增
