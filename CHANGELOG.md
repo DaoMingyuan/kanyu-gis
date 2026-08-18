@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.56.0] — 2026-08-18
+
+- **共享顶点拓扑编辑移植（第六十轮，kanyu-edit move_shared_vertex → 组件，
+  编辑算子盘点表收官）**：EDIT_OPS 10→11 新增 `topo-move`（对齐
+  topoedit.rs:147，ArcGIS Pro Map Topology 语义）——坐标键 f64 精确相等，
+  一次移动全部共享该坐标的顶点（含同一要素环闭合首末点等多处出现），
+  仅动 x/y、保留 Z/M；单记录入 undo 栈一次撤销（内核 DeltaSet 同语义）；
+  自逆算子（坐标对换）。坐标无顶点中文报错「拓扑移动未命中」。
+- 测试器 173→**177**（+3 动态：相邻面共享顶点同移无裂缝、undo 一次复原
+  两要素、未命中拒绝；edit.ops 10→11）+ static 137→**141**（+1 契约键）；
+  3080 生产桥实测 3 处命中（含环闭合末点）+ 撤销闭环通过。
+- 至此编辑算子盘点表全部落地：6 原始算子 + feature-move / hole-add /
+  attributes-replace / line-split / topo-move 五件移植 + vertex-move 双修复，
+  面切割 split_polygon_by_line 经评估留内核侧（geo BooleanOps 无 JS 等价）。
+
 ## [0.55.0] — 2026-08-18
 
 - **线打断移植（第五十九轮，kanyu-edit split_line_at_point → 组件）**：

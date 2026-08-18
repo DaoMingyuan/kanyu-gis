@@ -59,7 +59,7 @@ const GP_TOOLS = [
 
 // 地理编辑算子（组件内 GeoJSON 编辑内核，自我迭代起点；
 // 深度拓扑编辑由 kanyu-edit crate 承接，本组件覆盖轻量在线编辑）
-const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add', 'line-split']
+const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add', 'line-split', 'topo-move']
 
 // ---------- 工具函数 ----------
 
@@ -739,6 +739,22 @@ return {
         const n = f.properties ? Object.keys(f.properties).length : 0
         return { ok: true, summary: '要素 #' + i + ' 属性已整行替换（' + n + ' 字段）',
           inverse: { op: 'attributes-replace', args: { index: i, properties: old } } }
+      } else if (op === 'topo-move') {
+        // 拓扑共享顶点移动（对齐 kanyu-edit move_shared_vertex，topoedit.rs:147，
+        // ArcGIS Pro Map Topology 语义）：坐标键 f64 精确相等，一次移动全部共享
+        // 该坐标的顶点（含同一要素环闭合首末点等多处出现），仅动 x/y、保留 Z/M；
+        // 单记录入 undo 栈一次撤销（内核产 DeltaSet 同语义）。自逆算子（坐标对换）。
+        const ox = Number(a.x), oy = Number(a.y), nx = Number(a.nx), ny = Number(a.ny)
+        if (![ox, oy, nx, ny].every(isFinite)) return { ok: false, error: 'topo-move 需要数值 x/y/nx/ny（原坐标 → 新坐标）' }
+        let hit = 0
+        for (const f2 of feats) {
+          walkCoords(f2 && f2.geometry && f2.geometry.coordinates, (p) => {
+            if (p[0] === ox && p[1] === oy) { p[0] = nx; p[1] = ny; hit++ }
+          })
+        }
+        if (hit === 0) return { ok: false, error: '坐标 (' + a.x + ', ' + a.y + ') 无顶点（拓扑移动未命中）' }
+        return { ok: true, summary: '拓扑移动共享顶点 (' + ox + ', ' + oy + ') → (' + nx + ', ' + ny + ')，共 ' + hit + ' 处',
+          inverse: { op: 'topo-move', args: { x: nx, y: ny, nx: ox, ny: oy } } }
       } else if (op === 'line-split') {
         // 线在指定点打断为两条（对齐 kanyu-edit split_line_at_point，split.rs:109）：
         // 仅 LineString；点投影到最近线段（t 截断 [0,1]，1e-9 内吸附既有顶点），
@@ -1488,11 +1504,11 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/hole-add/line-split；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；line-split 线按点打断（对齐 kanyu-edit split_line_at_point：投影最近线段 + 1e-9 吸附顶点，首段就地改+次段插入、属性复制；面切割依赖内核 geo BooleanOps，组件不移植）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/hole-add/line-split/topo-move；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；line-split 线按点打断（对齐 kanyu-edit split_line_at_point：投影最近线段 + 1e-9 吸附顶点，首段就地改+次段插入、属性复制；面切割依赖内核 geo BooleanOps，组件不移植）；topo-move 拓扑共享顶点移动（对齐 kanyu-edit move_shared_vertex：坐标精确相等一次移动全部共享顶点，自逆坐标对换）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },
-        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"properties":{"name":"改"}}、{"index":0,"x":2.5,"y":4}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
+        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"properties":{"name":"改"}}、{"index":0,"x":2.5,"y":4}、{"x":5,"y":0,"nx":6,"ny":1}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
         inPlace: { type: 'boolean', description: 'true 原地覆盖（默认 false 写 .edited.geojson）' },
       },
       async execute(args) {

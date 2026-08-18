@@ -206,6 +206,10 @@ async function main() {
   check('host.js line-split 算子契约键（EDIT_OPS 入列 + line-unsplit 逆操作 + split_line_at_point 移植）',
     hostSrc.includes("'line-split'") && hostSrc.includes("'line-unsplit'")
       && hostSrc.includes('打断仅支持 LineString') && hostSrc.includes('吸附段首顶点'));
+  // 拓扑共享顶点（2026-08-18 第六十轮）：topo-move 对齐 kanyu-edit move_shared_vertex
+  check('host.js topo-move 算子契约键（EDIT_OPS 入列 + 自逆坐标对换 + move_shared_vertex 移植）',
+    hostSrc.includes("'topo-move'") && hostSrc.includes('move_shared_vertex')
+      && hostSrc.includes('拓扑移动未命中'));
   // kanyu_catalog 服务链接回执指引（2026-08-18 第三十四轮）：discover 用法指引 + fetch 接力提示 + xml/data 离线直通
   check('host.js kanyu_catalog 服务链接回执（discover 拉取指引 + fetch 接力提示 + xml/data 参数）',
     hostSrc.includes('拉取图层：本工具 url + layer=') && hostSrc.includes('接力检视/渲染/编辑')
@@ -573,7 +577,7 @@ async function main() {
 
   // ⑥ 地理编辑（能力 6）
   const ops = await callRpc('edit.ops');
-  check('edit.ops：10 算子（+line-split）', ops.ok && ops.ops.length === 10 && ops.ops.includes('attributes-replace') && ops.ops.includes('line-split'));
+  check('edit.ops：11 算子（+topo-move）', ops.ok && ops.ops.length === 11 && ops.ops.includes('line-split') && ops.ops.includes('topo-move'));
   const cnt = await callRpc('edit.apply', { path: EXAMPLE, op: 'feature-count' });
   check('edit.apply feature-count = 4', cnt.ok && cnt.count === 4);
   const edited = await callRpc('edit.apply', { path: EXAMPLE, op: 'attribute-set', args: { field: 'dsh_test', value: 1 } });
@@ -705,6 +709,30 @@ async function main() {
   check('line-split undo：line-unsplit 恢复原几何 + 删次段', spUndo.ok && spBack, spUndo.summary || spUndo.error);
   const spBad = await callRpc('edit.apply', { path: spRel, op: 'line-split', args: { index: 0, x: 0, y: 0 } });
   check('line-split 校验：打断点位于线端点中文报错', !spBad.ok && /线端点/.test(spBad.error || ''), spBad.error || '');
+
+  // ⑥+++++++ 拓扑共享顶点（2026-08-18 第六十轮）：topo-move 对齐 kanyu-edit move_shared_vertex（topoedit.rs:147）
+  const tpSrc = path.join(TMP_DIR, 'topo-move-test.geojson');
+  await fsp.writeFile(tpSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [5, 0], [5, 5], [0, 5], [0, 0]]] }, properties: { id: 'L' } },
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[5, 0], [10, 0], [10, 5], [5, 5], [5, 0]]] }, properties: { id: 'R' } },
+  ] }));
+  const tpRel = path.relative(REPO_ROOT, tpSrc);
+  const tp1 = await callRpc('edit.apply', { path: tpRel, op: 'topo-move', args: { x: 5, y: 0, nx: 6, ny: 1 } });
+  let tpOk = false;
+  try {
+    const fs4 = JSON.parse(await fsp.readFile(tp1.output, 'utf8')).features;
+    tpOk = fs4[0].geometry.coordinates[0][1].join(',') === '6,1' && fs4[1].geometry.coordinates[0][0].join(',') === '6,1';
+  } catch { /* 断言兜底 */ }
+  check('edit.apply topo-move：相邻面共享顶点一次同移（无裂缝，2 处）', tp1.ok && tpOk, tp1.summary || tp1.error);
+  const tpUndo = await callRpc('edit.undo', { path: tpRel });
+  let tpBack = false;
+  try {
+    const fs5 = JSON.parse(await fsp.readFile(tpUndo.output, 'utf8')).features;
+    tpBack = fs5[0].geometry.coordinates[0][1].join(',') === '5,0' && fs5[1].geometry.coordinates[0][0].join(',') === '5,0';
+  } catch { /* 断言兜底 */ }
+  check('topo-move undo：自逆坐标对换一次复原两要素', tpUndo.ok && tpBack, tpUndo.summary || tpUndo.error);
+  const tpBad = await callRpc('edit.apply', { path: tpRel, op: 'topo-move', args: { x: 99, y: 99, nx: 1, ny: 1 } });
+  check('topo-move 校验：坐标无顶点中文报错（未命中）', !tpBad.ok && /拓扑移动未命中/.test(tpBad.error || ''), tpBad.error || '');
 
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
