@@ -632,6 +632,15 @@ window.__ModuleLoader__.load({
         try {
           const r = await hostCall('edit.apply', { path, op, args, inPlace })
           setOut(fmtJson(r))
+          // 联动刷新（对齐顶点编辑 vUp 语义）：非原地产出改用 r.output 为当前路径并广播；
+          // 属性表作废待重载；顶点画布已加载则重载几何——此前应用后两区滞留旧数据
+          if (r && r.ok) {
+            const nextPath = (!inPlace && r.output) ? r.output : path
+            if (nextPath !== path) { store.path = nextPath; setPath(nextPath) }
+            setAttrs(null)
+            if (geo) { const g2 = await hostCall('edit.geometry', { path: nextPath, maxFeatures: 200 }); if (g2 && g2.ok) setGeo(g2) }
+            props.notify()
+          }
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
@@ -641,6 +650,12 @@ window.__ModuleLoader__.load({
           // 显式方法名（不做字符串拼接）：两半漂移锁静态可查
           const r = await hostCall(dir === 'undo' ? 'edit.undo' : 'edit.redo', { path })
           setOut(fmtJson(r))
+          // 联动刷新：撤销/重做改文件内容不改路径——属性表作废 + 顶点画布重载 + 广播
+          if (r && r.ok) {
+            setAttrs(null)
+            if (geo) { const g2 = await hostCall('edit.geometry', { path, maxFeatures: 200 }); if (g2 && g2.ok) setGeo(g2) }
+            props.notify()
+          }
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }

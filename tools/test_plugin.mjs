@@ -555,6 +555,11 @@ async function main() {
   check('client.js 处理页签产图层工具联动（tbRun 缺省落盘 + stderr 写出清单 + 设为当前图层）',
     tbLinkKeys.every((k) => clientSrc.includes(k)),
     tbLinkKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 编辑页签联动刷新（2026-08-18 第三十五轮）：apply2/undoRedo 成功后属性表作废 + 几何重载 + 路径广播
+  const editRefKeys = ['联动刷新', 'nextPath', 'setAttrs(null)'];
+  check('client.js 编辑页签联动刷新（apply2/undoRedo 后属性表作废 + 顶点画布重载 + 广播）',
+    editRefKeys.every((k) => clientSrc.includes(k)) && clientSrc.split('联动刷新').length >= 3,
+    editRefKeys.filter((k) => !clientSrc.includes(k)).join(',') || '两处命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -610,6 +615,9 @@ async function main() {
   check('pkg/client.js 处理页签产图层工具联动（与动态半同契约）',
     tbLinkKeys.every((k) => pkgClientSrc.includes(k)),
     tbLinkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 编辑页签联动刷新（与动态半同契约）',
+    editRefKeys.every((k) => pkgClientSrc.includes(k)) && pkgClientSrc.split('联动刷新').length >= 3,
+    editRefKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '两处命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
