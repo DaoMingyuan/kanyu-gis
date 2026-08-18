@@ -1,0 +1,215 @@
+# 堪舆 (Kanyu) GIS —— 本地混合模式会话预设（kanyu-gis）。
+#
+# 定位：在 local-hybrid 的本地混合创作模式之上，为「堪舆 GIS」仓库再注入一层
+# 领域专属能力。它是 local-hybrid 的一个派生：结构逐行沿用 local-hybrid，
+# 差异点是 (1) model 行声明 qwen3.8:27b-gpu / 1031614 qwen3.8:27b / DeepSeek
+# 三级路由，(2) 自带 `skills/kanyu-gis/SKILL.md`（7 大能力域的领域技能）。
+#
+# 两层分工（与 local-hybrid 相同，见其头部说明）：
+#
+#   规划 / 拆解 / 把关 / 审查 → 会话主模型 qwen3.8:27b-gpu（本地 GPU）。
+#   摘要 / 检索 / 初稿      → subagent 委派本地 Qwen3 8B 高速辅助模型
+#                             （`@deepseek-ai/dsh-subagent-qwen-local`）。
+#
+# 域知识（能力地图、联动机制、约定边界）不写进本文件，放在随 preset 目录
+# 分发的 `skills/kanyu-gis/SKILL.md`，由下方的 `skill-filesystem` 行（baseUrl
+# 相对解析到 preset 自身目录）注入宿主 skill 注册表——preset 拷贝安装后技能
+# 随目录走，主模型按需经 `skill` 工具加载，不占常驻上下文，且随 preset 目录
+# 同步更新（单一事实来源：技能正文与 kanyu introspect 输出同源，冲突时以
+# introspect 为准）。
+#
+# 本文件是唯一事实来源；preset.yml 只做发现元数据（name/description）。
+# 改动本文件或技能后请运行 `dsh-agent-presets --check` 校验。
+
+- id: model-local
+  type: openai-compat
+  baseUrl: http://127.0.0.1:11434/v1
+  model: qwen3.8:27b-gpu
+  apiKey: ${DSH_LOCAL_OAI_KEY:-ollama}
+  contextLimit: 262144
+  supportsImage: false
+  # 会话主模型：本地 GPU 上的 27B 主力（规划、拆解、审查、把关）。
+  # 路由兜底链：主模型不可达时依次回落 DeepSeek 云端 → 本地 8B 辅助模型。
+  # （2026-08-18 修复：fallback 原误写为顶层键，YAML 非法；收回 model-local 行内
+  #   作为其属性，并去掉自引用 model-local。）
+  fallback:
+    - model-deepseek
+    - model-local-8b
+- id: model-local-8b
+  type: openai-compat
+  baseUrl: http://127.0.0.1:1031614/v1
+  model: qwen3.8:27b
+  apiKey: ${DSH_LOCAL_API_KEY:-ollama}
+  contextLimit: 262144
+  supportsImage: false
+  # Qwen3 8B 仅当显式 model override 指名时才作为备选（供 subagent 用）：
+  # 1031614 = Qwen3 8B 高速辅助模型（DSH_LOCAL_API_KEY）。
+- id: model-deepseek
+  type: deepseek
+  model: deepseek-v4-pro
+  baseUrl: http://127.0.0.1:15724/v1
+  apiKey: ${DSH_DEEPSEEK_API_KEY}
+  # DeepSeek 云端 27B 兜底（本地 GPU 不可用时）。
+
+# services（不直接暴露给模型）
+- id: file-operations
+  name: '@deepseek-ai/dsh-file-operations'
+  config:
+    defaultMode: read-only
+  # 本地文件 I/O：default 档。本 preset 面向本地可信工作区（用户自己的
+  # E: 盘仓库），读写直达，默认无需逐次审批（用户已把审批策略调为
+  # never）；越档（越出允许模式 / 系统敏感区）仍会被文件策略硬拦并记入
+  # 会话日志。
+- id: process
+  name: '@deepseek-ai/dsh-process'
+  isolate:
+    realm: session
+  # 进程执行：read-only 档。默认命令在只读沙箱内执行；仅当命令确实需要写出
+  # 工作区时，才可携带 sandbox_permissions + justification 做一次性重试。
+  # 本仓库的标准命令均为 cargo 构建族，read-only 沙箱即可覆盖读与构建产物写入。
+- id: subagents
+  name: '@deepseek-ai/dsh-subagents'
+  isolate:
+    realm: session
+  config:
+    qwen-local:
+      type: openai-compat
+      baseUrl: http://127.0.0.1:1031614/v1
+      model: qwen3.8:27b
+      apiKey: ${DSH_LOCAL_API_KEY:-ollama}
+      contextLimit: 262144
+      timeoutMs: 600000
+      maxOutputTokens: 32768
+      toolset:
+        - read
+        - write
+        - edit
+        - glob
+        - grep
+        - read_image
+        - pwsh
+        - subagent
+        - subagent_fork
+      # 委派的本地子代理跑 Qwen3 8B —— 本地混合模式的核心：摘要、检索、初稿、
+      # 并行小任务。主模型（27B）保留规划、拆解与审查；子代理结果回到主模型
+      # 处把关后才可采信（见 SKILL.md 的审查约定）。
+    fork:
+      type: fork
+      # fork 子代理继承本对话上下文、使用会话主模型（27B）——续作、审查、
+      # 承上启下的工作走这里。继承父会话上下文（含已加载技能），无需子代理
+      # 再读 SKILL.md（见 SKILL.md 的审查约定）。
+    claude-code:
+      type: claude-code
+      enabled: false
+      # 本 preset 不启用 Claude Code 通道。
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  isolate:
+    realm: session
+  config:
+    baseUrl: skills/
+    # 相对 currentDir 解析 → 本 preset 目录的 `skills/`。preset 拷贝安装后
+    # `skills/kanyu-gis/SKILL.md` 随目录走，宿主 skill 注册表随之更新（单一事实
+    # 来源：技能正文与 kanyu introspect 输出同源，冲突时以 introspect 为准；
+    # 会话启动时不注入正文，主模型按需经 `skill` 工具加载，不占常驻上下文）。
+
+# tools（暴露给模型）
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  config:
+    maxOutputChars: 200000
+- id: tool-read
+  name: '@deepseek-ai/dsh-tool-read'
+  config:
+    maxOutputChars: 100000
+- id: tool-write
+  name: '@deepseek-ai/dsh-tool-write'
+  # 无 config：write 插件没有可配置项，config 行整体省略（不写 false 占位）。
+- id: tool-edit
+  name: '@deepseek-ai/dsh-tool-edit'
+- id: tool-glob
+  name: '@deepseek-ai/dsh-tool-glob'
+  config:
+    maxResults: 100
+- id: tool-grep
+  name: '@deepseek-ai/dsh-tool-grep'
+  config:
+    maxMatches: 250
+- id: tool-read-image
+  name: '@deepseek-ai/dsh-tool-read-image'
+  config:
+    maxImagePixels: 4000000
+- id: tool-subagent
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: spawn
+    toolName: subagent
+    # 本地混合模式：委派的子任务由本地 Qwen3 8B 高速辅助模型
+    # （`@deepseek-ai/dsh-subagent-qwen-local`，端口 1031614）承接——摘要、检索、
+    # 初稿、并行小任务。子代理结果必须由主模型亲自审查后才可采信（见
+    # skills/kanyu-gis/SKILL.md 的审查约定）。
+- id: tool-subagent-qwen-local
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: local-qwen
+    toolName: subagent_qwen_local
+    enableRunInBackground: true
+    toolDescription: >-
+      委派的子任务由本地 Qwen3 8B 高速辅助模型执行：适合摘要、检索、
+      初稿、并行小任务。子代理结果必须由主模型审查把关。
+    # 本地混合模式的核心：委派的子任务改由本地小模型承接，长文本阅读、
+    # 多文件检索这类"吞吐活"不占用主模型的上下文与算力。
+- id: tool-subagent-fork
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: fork
+    toolName: subagent_fork
+    # fork 子代理继承本对话上下文、使用会话主模型（qwen3.8:27b-gpu）——
+    # 续作、审查、承上启下的工作走这里。fork 继承父会话上下文（含已加载
+    # 技能），无需子代理再读 SKILL.md（见 skills/kanyu-gis/SKILL.md 的审查约定）。
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000
+    # 只开搜索面、关网页抓取面（搜索超时 60s）。
+
+# context
+- id: memory
+  mode: disable_compaction
+  preserveTurns: 20
+  summarize: summary
+- id: system-prompt
+  mode: append
+  # 追加式（非 replace）：保留宿主默认系统提示的全部能力，只在上层叠一层
+  # 本地混合模式约定 + 堪舆 GIS 仓库守则，与宿主能力做加法而非替换。追加
+  # 文本在每轮系统提示中生效（非"只出现一次"），与记忆段叠加的代价见文件尾注。
+  text: 你是堪舆GIS项目专属助手，专注于地理空间数据、GIS可视化、空间分析与3DGIS开发。请始终使用中文回复，并严格遵循本仓库AGENTS.md、AI_SYNC.md、docs/MASTERPLAN.md与docs/SECURITY.md中的规则。
+
+# skills
+- id: skill-kanyu-gis
+  name: kanyu-gis
+  description: >-
+    堪舆 (Kanyu) GIS 会话预设的领域技能：七域能力地图（地图渲染 / 数据读取 /
+    坐标系 / 工程目录目录树 / 地理处理工具箱 / 图层编辑 / 3D 场景）+ MCP 服务器，
+    驱动 kanyu CLI（kanyu introspect / kanyu agents validate / cargo build、test、
+    clippy、fmt）完成勘察、实现与验证，并遵守仓库约定边界（依赖方向、内核零 C
+    依赖、无 execute_code、UI 组件铁律、AI_SYNC.md 开工登记/收工回记）。
+  path: skills/kanyu-gis/SKILL.md
+  version: 1
+  trust: untrusted
+  # 指向本 preset 自带 `skills/` 子树中的 `skills/kanyu-gis/SKILL.md`：相对
+  # currentDir 解析（与上方 skill-filesystem 的 baseUrl 同源），preset 拷贝安装
+  # 后随目录走。
+  # trust 保持 `untrusted`：技能正文是随 preset 分发的数据，宿主在注入会话
+  # 时按 untrusted 对待；正文与 kanyu introspect 输出同源，冲突时以
+  # introspect 为准。
+
+# 维护者注：
+#   model 行用 `openai-compat` / `deepseek` 注册表类型 + baseUrl 端点（端点即
+#   ollama 本地端点的 OpenAI 兼容协议 / DSH 的 DeepSeek 网关），而非
+#   local-hybrid 旧版的裸 `local:` 块——宿主 model 行没有 `local` 这一类型，
+#   照抄会在 model 校验处报 "Unknown model registry local"。
+#   system-prompt 与 memory 的叠加代价见 local-hybrid/agent.cordis.yml 尾部
+#   维护者注（append 文本每轮进系统提示 + 记忆保留 20 轮，长会话下 token 与
+#   压缩负担持续累积，属设计取舍）。

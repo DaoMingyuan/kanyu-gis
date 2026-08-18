@@ -1,0 +1,9 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[116.3914,39.9072]},"properties":{"name":"示例大厦A","height":88.5,"usage":"office"}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[116.3971,39.9096]},"properties":{"name":"示例住宅B","height":33.0,"usage":"residential"}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[116.4025,39.9155]},"properties":{"name":"示例大厦C","height":120.0,"usage":"office"}},
+    {"type":"Feature","geometry":{"type":"LineString","coordinates":[[116.39,39.90],[116.41,39.92]]},"properties":{"name":"示例路","width":24.0,"grade":2}}
+  ]
+}

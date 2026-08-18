@@ -1,0 +1,8 @@
+name: kanyu-gis
+description: >-
+  堪舆 (Kanyu) GIS 会话预设：在本地混合创作模式之上，为「堪舆 GIS」仓库注入领域专属能力。
+  自带 kanyu-gis 领域技能（7 大能力域：地图渲染 / 数据读取 / 坐标系 / 工程目录目录树 /
+  地理处理 / 图层编辑 / 3D 场景 + MCP 服务器），驱动 kanyu CLI（kanyu introspect /
+  kanyu agents validate / cargo build 等）完成勘察、实现与验证；沿用 local-hybrid 的
+  本地 Qwen3 8B 辅助子代理做摘要检索，主模型（qwen3.8:27b 或 DeepSeek）负责规划、拆解与把关。
+  面向 E:\BaiduSyncdisk\堪舆GIS 工作区使用。
