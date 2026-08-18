@@ -4,8 +4,9 @@
 # 经会签簿同步流程复制进独立组件仓（DaoMingyuan/kanyu-gis）的
 # `.github/workflows/`（GitHub 只识别仓根该目录，主仓内本文件仅为源）。
 #
-# 覆盖：`tools/test_plugin.mjs --static`——装载/22 RPC 注册/8 动态工具注册、
-# 纯本地 RPC（catalog.list/crs.presets/geoprocess.list/edit 全组/scene3d.data）、
+# 覆盖：`tools/test_plugin.mjs --static`——装载/23 RPC 注册/8 动态工具注册、
+# 纯本地 RPC（catalog.list/crs.presets/crs.search（兜底降级契约）/
+# geoprocess.list/edit 全组/scene3d.data）、
 # Client 半语法与结构契约、pkg 静态双面包契约（exports/dsh.client/工厂 id/
 # preset 门控/两半 RPC 漂移锁/RPC 桥实测 crs.presets 200）。
 #

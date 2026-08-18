@@ -309,6 +309,9 @@ function TabCrs(props) {
   const [to, setTo] = React.useState('EPSG:4547')
   const [out, setOut] = React.useState('')
   const [busy, setBusy] = React.useState(false)
+  const [query, setQuery] = React.useState('')
+  const [hits, setHits] = React.useState(null)
+  const [searchSrc, setSearchSrc] = React.useState('')
   React.useEffect(() => {
     host.call('crs.presets', {}).then(r => { if (r && r.ok) setPresets(r.presets) }).catch(() => {})
   }, [])
@@ -321,10 +324,31 @@ function TabCrs(props) {
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
+  async function search() {
+    setBusy(true)
+    try {
+      const r = await host.call('crs.search', { query, limit: 20 })
+      if (r && r.ok) { setHits(r.results); setSearchSrc(r.source + (r.degraded ? '（兜底）' : '')) }
+      else setHits([])
+    } catch (e) { setHits([]); setSearchSrc('RPC 失败: ' + (e && e.message || e)) }
+    setBusy(false)
+  }
   const sel = (v, set) => h('select', { className: 'kyg-input', value: v, onChange: e => set(e.target.value) },
     presets.map(c => h('option', { key: c.code, value: c.code }, c.code + ' ' + c.name)))
   return h('div', null,
-    h('div', { className: 'kyg-hint' }, '坐标框架：常用坐标系速查 + EPSG 全库投影变换（kanyu data reproject）'),
+    h('div', { className: 'kyg-hint' }, '坐标框架：EPSG 全库检索（7507 条）+ 常用速查 + 投影变换（kanyu crs/data reproject）'),
+    h('div', { className: 'kyg-row' },
+      h('input', { className: 'kyg-input', style: { flex: 1 }, placeholder: '检索 EPSG：代码或名称（如 4547 / CGCS2000）',
+        value: query, onChange: e => setQuery(e.target.value),
+        onKeyDown: e => { if (e.key === 'Enter') search() } }),
+      h('button', { className: 'kyg-btn', disabled: busy, onClick: search }, '检索')),
+    hits ? h('div', null,
+      h('div', { className: 'kyg-hint' }, hits.length + ' 条结果 · ' + searchSrc + '（点击设为目标 CRS）'),
+      hits.map(c => h('div', { key: c.code, className: 'kyg-row', style: { cursor: 'pointer' },
+          onClick: () => setTo(c.code) },
+        h('span', { style: { fontFamily: 'monospace', marginRight: '6px' } }, c.code),
+        h('span', { style: { flex: 1 } }, c.name),
+        h('span', { className: 'kyg-hint' }, c.kind + (c.unit ? ' · ' + c.unit : ''))))) : null,
     Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
     Field('源 CRS', sel(from, setFrom)),
     Field('目标', sel(to, setTo)),

@@ -27,7 +27,8 @@ const GIS_EXTS = {
   parquet: 1, csv: 1, tsv: 1, xlsx: 1, kdb: 1, kyu: 1, gpkg: 1, txt: 1,
 }
 
-// 坐标框架快捷表（中国 GIS 常用；全库检索走 kanyu data reproject 的 EPSG 库）
+// 坐标框架快捷表（中国 GIS 常用；EPSG 全库 7507 条检索走 `kanyu crs search`，
+// 接内核 core::crs::search_crs 单一事实来源，此处仅作离线/快显兜底）
 const CRS_PRESETS = [
   { code: 'EPSG:4326', name: 'WGS84 经纬度', kind: '地理' },
   { code: 'EPSG:4490', name: 'CGCS2000 经纬度（中国 2000 大地）', kind: '地理' },
@@ -308,6 +309,37 @@ return {
       if (output) args.push('--output', q(await procPath(output)))
       args.push(q(p))
       return runKanyu(args, 180000)
+    }
+
+    // EPSG 全库检索（内核 core::crs::search_crs，7507 条）：经 `kanyu crs search`
+    // CLI 出口，kind 英文枚举映射中文标签（与 CRS_PRESETS 一致）；CLI 版本过旧
+    // 无 crs 子命令时回退本地预设过滤并标注 degraded。
+    async function crsSearch(query, limit) {
+      const args = ['crs', 'search', '--json', '--limit', String(limit || 20)]
+      const qq = String(query || '').trim()
+      if (qq) args.push(q(qq))
+      const r = await runKanyu(args, 60000)
+      const j = parseJsonLoose(r.stdout)
+      if (r.ok && Array.isArray(j)) {
+        const kindCn = { Geographic: '地理', Projected: '投影', Other: '其他' }
+        return {
+          ok: true, source: 'kanyu crs search（内核 EPSG 全库 7507 条）',
+          results: j.map(c => ({
+            code: 'EPSG:' + c.code, name: c.name,
+            kind: kindCn[c.kind] || c.kind, unit: c.unit,
+          })),
+        }
+      }
+      // 回退：本机 kanyu CLI 无 crs 子命令（v0.22.0 之前），本地预设过滤兜底
+      const ql = qq.toLowerCase()
+      const hits = CRS_PRESETS.filter(c =>
+        !ql || c.code.toLowerCase().includes(ql) || c.name.toLowerCase().includes(ql))
+      return {
+        ok: true, degraded: true,
+        source: '本地预设兜底（kanyu CLI 无 crs 子命令，升级 CLI 后接 EPSG 全库）'
+          + (r.stderr ? '；stderr: ' + r.stderr.slice(0, 200) : ''),
+        results: hits,
+      }
     }
 
     // ------ 能力 5：地理处理 ------
@@ -745,6 +777,7 @@ return {
     harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
+    harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))
     harness.handle('geoprocess.list', async () => ({ ok: true, tools: GP_TOOLS }))
     harness.handle('geoprocess.run', async (a) => geoprocessRun(a && a.tool, a && a.input, a && a.input2, a && a.output, a && a.params))
     harness.handle('edit.ops', async () => ({ ok: true, ops: EDIT_OPS }))
@@ -870,15 +903,23 @@ return {
 
     textTool({
       name: 'kanyu_crs',
-      description: '坐标框架：action=presets 列出常用坐标系；action=reproject 执行投影变换（EPSG:xxxx ↔ EPSG:xxxx，内置 EPSG 全库）。',
+      description: '坐标框架：action=search EPSG 全库检索（7507 条，按代码/名称匹配）；action=presets 列出常用坐标系；action=reproject 执行投影变换（EPSG:xxxx ↔ EPSG:xxxx）。',
       parameters: {
-        action: { type: 'string', required: true, description: 'presets | reproject' },
+        action: { type: 'string', required: true, description: 'search | presets | reproject' },
+        query: { type: 'string', description: 'search 时的检索词（代码子串如 4547，或名称片段如 CGCS2000；缺省返回常用精选）' },
+        limit: { type: 'number', description: 'search 结果上限（默认 20）' },
         path: { type: 'string', description: 'reproject 时的数据文件路径' },
         from: { type: 'string', description: '源 CRS（如 EPSG:4326）' },
         to: { type: 'string', description: '目标 CRS（如 EPSG:4547）' },
         output: { type: 'string', description: '输出路径（可选，缺省打印）' },
       },
       async execute(args) {
+        if (args.action === 'search') {
+          const s = await crsSearch(args.query, args.limit)
+          if (!s.results.length) return '无匹配坐标系（' + s.source + '）'
+          return '坐标系检索（' + s.source + '）:\n'
+            + s.results.map(c => c.code + '  ' + c.name + '（' + c.kind + (c.unit ? '，' + c.unit : '') + '）').join('\n')
+        }
         if (args.action === 'presets') {
           return '常用坐标系:\n' + CRS_PRESETS.map(c => c.code + '  ' + c.name + '（' + c.kind + '）').join('\n')
         }

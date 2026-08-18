@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.18.0] — 2026-08-18
+
+- **坐标框架域深化：CRS 全库检索接内核 EPSG 库**：主仓 `kanyu-cli` 新增顶层
+  子命令 `kanyu crs search [query] [--limit N]` / `kanyu crs info <code>`
+  （直连 `core::crs::search_crs`/`crs_info` 单一事实来源，crs-definitions
+  内置 EPSG 库 7507 条；docs/CLI.md 新增 §4B），本机 CLI 已 cargo install
+  更新。组件侧新增 `crs.search` RPC（RPC 表 22→**23**）——经 CLI 出口检索
+  全库，kind 英文枚举映射中文标签；CLI 过旧无 crs 子命令时回退 CRS_PRESETS
+  本地过滤并标注 `degraded`（双模式可测）。`kanyu_crs` 工具加 `search` 分支。
+- **双客户端坐标页签加 EPSG 检索框**：代码/名称模糊检索（Enter 或按钮触发），
+  结果行显示代码/名称/类型/单位、标注来源（全库或兜底），点击设为目标 CRS。
+- **测试器 +2 断言**（4547 检索命中 + 空查询常用精选），RPC 计数断言 22→23；
+  总计 **65/65 全绿**（static 54/54）。`cargo test --workspace` 全绿。
+
 ## [0.17.0] — 2026-08-18
 
 - **目录域补全：地图框/布局框分类的组件语境对应物**：`catalog.list` 新增

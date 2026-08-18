@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（22 个）', rpc.size === 22, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（23 个）', rpc.size === 23, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -258,6 +258,15 @@ async function main() {
   // ④ 坐标框架（能力 3）
   const presets = await callRpc('crs.presets');
   check('crs.presets：7 条常用坐标系', presets.ok && presets.presets.length === 7);
+  // crs.search 双模式可测：CLI 有 crs 子命令走内核 EPSG 全库，否则本地预设兜底
+  // （4547 两侧均命中），degraded 旗标仅标注来源不影响契约。
+  const crsSearch = await callRpc('crs.search', { query: '4547', limit: 20 });
+  check('crs.search：4547 检索命中 EPSG:4547',
+    crsSearch.ok && crsSearch.results.some(c => c.code === 'EPSG:4547'),
+    JSON.stringify(crsSearch).slice(0, 120));
+  const crsCommon = await callRpc('crs.search', { query: '', limit: 20 });
+  check('crs.search：空查询返回常用精选（含 EPSG:4326）',
+    crsCommon.ok && crsCommon.results.length > 0 && crsCommon.results.some(c => c.code === 'EPSG:4326'));
   if (!STATIC_ONLY) {
     const reproj = await callRpc('crs.reproject', { path: EXAMPLE, from: 'EPSG:4326', to: 'EPSG:4490' });
     check('crs.reproject：4326→4490 执行成功', reproj.ok, reproj.stderr ? reproj.stderr.slice(0, 80) : '');
@@ -412,7 +421,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 22 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 23 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping
