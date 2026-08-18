@@ -189,7 +189,20 @@ return {
         }
       }
       await walk(root, maxDepth)
-      return { ok: true, root, count: items.length, items }
+      // 壳层 catalog.rs 固定五分类（ArcGIS Pro 工程目录范式）的组件语境映射：
+      // 数据库 = .kdb/.kyu 工程/库文件；本机数据 = 其余 GIS 数据文件；
+      // 地图框/布局框/服务链接组件语境暂无对应物，按壳层契约给空态提示。
+      const DB_EXTS = { kdb: 1, kyu: 1 }
+      const dbItems = items.filter(i => DB_EXTS[i.ext])
+      const dataItems = items.filter(i => !DB_EXTS[i.ext])
+      const categories = [
+        { name: '地图框', count: 0, placeholder: '组件语境暂无地图框——地图页签渲染即得' },
+        { name: '布局框', count: 0, placeholder: '组件语境暂无布局框' },
+        { name: '数据库', count: dbItems.length, placeholder: null },
+        { name: '服务链接', count: 0, placeholder: '暂无服务链接（WFS 发现/WMS 底图见壳层 services.rs，组件侧规划中）' },
+        { name: '本机数据', count: dataItems.length, placeholder: null },
+      ]
+      return { ok: true, root, count: items.length, items, dataItems, dbItems, categories }
     }
 
     // ------ 能力 2：数据读取（info / query / validate / preview 属性表） ------
@@ -597,7 +610,8 @@ return {
         const r = await catalogList(args.dir, args.depth)
         if (!r.ok) return '目录扫描失败: ' + r.error
         const lines = r.items.slice(0, 80).map(i => i.ext.toUpperCase().padEnd(8) + ' ' + (i.size === null ? '-' : Math.round(i.size / 1024) + 'KB').padStart(9) + '  ' + shortPath(i.path))
-        return '目录 ' + r.root + ' 共 ' + r.count + ' 个 GIS 数据文件' + (r.count > 80 ? '（前 80 条）' : '') + ':\n' + lines.join('\n')
+        const catLine = (r.categories || []).map(c => c.name + ' ' + c.count).join(' · ')
+        return '目录 ' + r.root + ' 共 ' + r.count + ' 个 GIS 数据文件（五分类：' + catLine + '）' + (r.count > 80 ? '（前 80 条）' : '') + ':\n' + lines.join('\n')
       },
     })
 

@@ -57,6 +57,10 @@ window.__ModuleLoader__.load({
 .kyg-list-item:hover{background:rgba(255,255,255,.07)}
 .kyg-list-item .ext{color:#f0b7a4;font-size:11px;min-width:52px}
 .kyg-list-item .sz{color:#6b7489;font-size:11px;margin-left:auto}
+.kyg-cat-head{padding:5px 8px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:baseline;font-weight:600}
+.kyg-cat-head:hover{background:rgba(255,255,255,.07)}
+.kyg-cat-head .arr{color:#6b7489;font-size:11px;min-width:12px}
+.kyg-cat-head .ct{color:#6b7489;font-size:11px;margin-left:auto;border:1px solid rgba(128,128,128,.4);border-radius:8px;padding:0 6px}
 .kyg-hint{color:#6b7489;font-size:11px;margin:4px 0}
 .kyg-sel{color:#7fd4a8;font-size:11px}
 .kyg-header-btn{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid rgba(200,97,74,.5);
@@ -103,20 +107,44 @@ window.__ModuleLoader__.load({
     // ---------- 七页签 ----------
 
     // 目录：GIS 数据目录读取 + 工程目录
+    // 目录：五分类对齐壳层 catalog.rs（地图框/布局框/数据库/服务链接/本机数据）
     function TabCatalog(props) {
       const store = props.store
       const [dir, setDir] = React.useState('')
-      const [items, setItems] = React.useState(null)
+      const [data, setData] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [msg, setMsg] = React.useState('')
+      const [open, setOpen] = React.useState({})
       async function scan() {
         setBusy(true); setMsg('扫描中…')
         try {
           const r = await hostCall('catalog.list', { dir: dir || undefined, depth: 3 })
-          if (r && r.ok) { setItems(r.items); setMsg('共 ' + r.count + ' 个 GIS 数据文件（根：' + r.root + '）') }
-          else { setItems(null); setMsg('失败: ' + (r && r.error || '未知')) }
+          if (r && r.ok) { setData(r); setMsg('共 ' + r.count + ' 个 GIS 数据文件（根：' + r.root + '）') }
+          else { setData(null); setMsg('失败: ' + (r && r.error || '未知')) }
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
+      }
+      function itemRow(it, i) {
+        return h('div', {
+          key: i, className: 'kyg-list-item',
+          onClick: () => { store.path = it.path; props.notify() },
+        },
+          h('span', { className: 'ext' }, it.ext.toUpperCase()),
+          h('span', null, it.name),
+          h('span', { className: 'sz' }, it.size === null ? '' : Math.round(it.size / 1024) + 'KB'))
+      }
+      function catSection(cat) {
+        const list = cat.name === '数据库' ? (data.dbItems || []) : cat.name === '本机数据' ? (data.dataItems || []) : []
+        // 壳层契约：默认仅「本机数据」展开
+        const isOpen = open[cat.name] !== undefined ? open[cat.name] : cat.name === '本机数据'
+        return h('div', { key: cat.name },
+          h('div', { className: 'kyg-cat-head', onClick: () => setOpen(Object.assign({}, open, { [cat.name]: !isOpen })) },
+            h('span', { className: 'arr' }, isOpen ? '▾' : '▸'),
+            h('span', null, cat.name),
+            h('span', { className: 'ct' }, cat.count)),
+          isOpen && (list.length
+            ? list.map(itemRow)
+            : h('div', { className: 'kyg-hint' }, cat.placeholder || '（空）')))
       }
       return h('div', null,
         Field('目录', h('input', { className: 'kyg-input', value: dir, placeholder: '缺省 = 会话工作区根', onChange: e => setDir(e.target.value) })),
@@ -124,13 +152,7 @@ window.__ModuleLoader__.load({
           h('button', { className: 'kyg-btn', disabled: busy, onClick: scan }, '扫描'),
           store.path ? h('span', { className: 'kyg-sel' }, '当前图层: ' + store.path) : null),
         h('div', { className: 'kyg-hint' }, msg),
-        items && items.map((it, i) => h('div', {
-          key: i, className: 'kyg-list-item',
-          onClick: () => { store.path = it.path; props.notify() },
-        },
-          h('span', { className: 'ext' }, it.ext.toUpperCase()),
-          h('span', null, it.name),
-          h('span', { className: 'sz' }, it.size === null ? '' : Math.round(it.size / 1024) + 'KB'))),
+        data && data.categories && data.categories.map(catSection),
       )
     }
 

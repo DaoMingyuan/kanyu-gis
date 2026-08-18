@@ -162,6 +162,13 @@ async function main() {
   const exts = new Set((cat.items || []).map((i) => i.ext));
   check('catalog.list：扫描 ' + CATALOG_DIR + '/ 检出 geojson（GIS 扩展名矩阵过滤）', cat.ok && cat.count >= 1 && exts.has('geojson'),
     'count=' + cat.count + ' exts=' + [...exts].join(','));
+  // 五分类（壳层 catalog.rs 范式，两种模式皆覆盖；2026-08-18 第十四轮）
+  const catNames = (cat.categories || []).map((c) => c.name);
+  check('catalog.list：五分类对齐壳层 catalog.rs（地图框/布局框/数据库/服务链接/本机数据 + kyu 入数据库类）',
+    catNames.join(',') === '地图框,布局框,数据库,服务链接,本机数据'
+      && (cat.dbItems || []).some((i) => i.ext === 'kyu')
+      && (cat.dataItems || []).every((i) => i.ext !== 'kdb' && i.ext !== 'kyu'),
+    'cats=' + catNames.join('/') + ' db=' + (cat.dbItems || []).length + ' data=' + (cat.dataItems || []).length);
   if (!STATIC_ONLY) {
     const info = await callRpc('data.info', { path: EXAMPLE });
     check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
@@ -295,6 +302,11 @@ async function main() {
   check('client.js 地图页签符号化控件（buildStyle + graduated/categorical）',
     symKeys.every((k) => clientSrc.includes(k)),
     symKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 目录页签五分类（2026-08-18 第十四轮）：分类头 + 数据库/本机数据分离
+  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', '本机数据'];
+  check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
+    catKeys.every((k) => clientSrc.includes(k)),
+    catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -326,6 +338,9 @@ async function main() {
   check('pkg/client.js 地图页签符号化控件（与动态半同契约）',
     symKeys.every((k) => pkgClientSrc.includes(k)),
     symKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 目录页签五分类区（与动态半同契约）',
+    catKeys.every((k) => pkgClientSrc.includes(k)),
+    catKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
