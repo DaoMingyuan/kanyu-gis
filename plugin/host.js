@@ -1035,7 +1035,7 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/attribute-set/attribute-delete/vertex-move；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/attribute-set/attribute-delete/vertex-move；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },
@@ -1044,7 +1044,9 @@ return {
       },
       async execute(args) {
         const r = await editApply(args.path, args.op, args.args, !!args.inPlace)
-        return r.ok ? (r.summary + (r.output ? '\n输出: ' + r.output : '')) : '编辑失败: ' + r.error
+        if (!r.ok) return '编辑失败: ' + r.error
+        const hist = r.history ? '\n撤销栈 ' + r.history.undo + ' 步 / 重做栈 ' + r.history.redo + ' 步（可经 edit.undo/edit.redo RPC 或工作台编辑页签回滚）' : ''
+        return r.summary + (r.output ? '\n输出: ' + r.output : '') + hist
       },
     })
 

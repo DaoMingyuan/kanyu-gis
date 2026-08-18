@@ -167,6 +167,9 @@ async function main() {
   // kanyu_geoprocess 产出回执（2026-08-18 第三十一轮）：双分支附 stderr 写出清单
   check('host.js kanyu_geoprocess 产出回执（writesSummary 解析「已写出 N 要素 → path」共用契约）',
     hostSrc.includes('writesSummary') && hostSrc.includes('产出: '));
+  // kanyu_edit 撤销栈回执（2026-08-18 第三十三轮）：history 不再被文本工具丢弃
+  check('host.js kanyu_edit 回执含撤销栈深度（history 不再被丢弃）',
+    hostSrc.includes('撤销栈') && hostSrc.includes('r.history'));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -409,6 +412,18 @@ async function main() {
   const h1 = await callRpc('edit.history', { path: udRel });
   check('edit.history：栈深与栈顶标签', h1.ok && h1.undo === 1 && h1.redo === 0 && /删除要素/.test(h1.undoTop),
     'undoTop=' + h1.undoTop);
+
+  // ⑥++ kanyu_edit 撤销栈回执（2026-08-18 第三十三轮）：动态工具文本附 undo/redo 栈深
+  const erSrc = path.join(TMP_DIR, 'edit-receipt-test.geojson');
+  await fsp.copyFile(path.join(REPO_ROOT, EXAMPLE), erSrc);
+  const erRel = path.relative(REPO_ROOT, erSrc);
+  const tEdit = tools.get('kanyu_edit');
+  const erText = tEdit && await tEdit.execute({ path: erRel, op: 'attribute-set', args: { index: 0, field: 'height', value: 99 } });
+  check('动态工具 kanyu_edit：回执含「撤销栈 1 步 / 重做栈 0 步」（模型侧可提示回滚）',
+    typeof erText === 'string' && /撤销栈 1 步 \/ 重做栈 0 步/.test(erText),
+    String(erText).slice(0, 160));
+  const erOut = erSrc.replace(/\.geojson$/, '.edited.geojson');
+  if (existsSync(erOut)) await fsp.unlink(erOut); // 清理临时产物
 
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
