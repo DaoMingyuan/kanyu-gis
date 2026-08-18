@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.49.0] — 2026-08-18
+
+- **模型侧符号化同能力（第五十三轮，kanyu_render 补 symbology 入参）**：
+  `kanyu_render` 动态工具 schema 新增 `symbology` 参数（LayerSymbology
+  编辑模型文档化：single/categorical/graduated 三模式 + ramp 色带名）；
+  地图分支与 layout 分支同款 symToRule 投影（renderLayout 第八参，
+  显式 style 优先）。模型侧与面板侧至此同一编辑模型语义——AI 可直接
+  产出 .kyu 持久化格式样式。RPC 仍 30 项（纯工具面扩展）。
+- **测试器 +4 断言**（schema symbology 契约键 + renderLayout 投影契约键 +
+  symbology single 出图落盘动态实测 + layout+graduated 投影排版动态实测）；
+  总计 **145/145 全绿**（static 110/110）。3080 生产桥复测：health rpc:30 +
+  categorical symbology 投影出图（4 要素）。
+
 ## [0.48.0] — 2026-08-18
 
 - **图层符号化编辑移植（第五十二轮，壳层 symbology.rs 图层属性页对齐）**：

@@ -197,6 +197,12 @@ async function main() {
   // kanyu_render layout 布局排版（2026-08-18 第四十六轮）：renderLayout 助手契约键
   check('host.js kanyu_render layout 契约键（renderLayout + ensureOutDir 防护 + 排版完成回执）',
     /async function renderLayout[\s\S]*?ensureOutDir\(\)/.test(hostSrc) && hostSrc.includes('排版完成: '));
+  // 模型侧符号化同能力（2026-08-18 第五十三轮）：kanyu_render schema 含 symbology
+  // 编辑模型入参 + renderLayout 同款 symToRule 投影（显式 style 优先）
+  check('host.js kanyu_render schema 含 symbology 入参（LayerSymbology 编辑模型，模型侧同能力）',
+    /name: 'kanyu_render'[\s\S]*?symbology: \{ type: 'object'/.test(hostSrc));
+  check('host.js renderLayout symbology 投影（symToRule 同款，layout 分支同能力）',
+    /async function renderLayout[\s\S]*?symToRule\(symbology\)/.test(hostSrc));
   // render.layout RPC（2026-08-18 第四十八轮）：kyu 工程布局规格解析 + SVG 文本回传
   check('host.js render.layout 契约键（layoutPreview + kyu 清单解析 + svg 回传 + RPC 注册）',
     /async function layoutPreview[\s\S]*?manifest\.layers/.test(hostSrc)
@@ -419,6 +425,22 @@ async function main() {
       typeof layText === 'string' && /排版完成: /.test(layText)
         && laySvg.includes('<svg') && laySvg.includes('示例布局'),
       String(layText).slice(0, 100) + ' svg=' + laySvg.length);
+    // 模型侧符号化同能力（2026-08-18 第五十三轮）：kanyu_render symbology
+    // 编辑模型入参——地图分支投影出图 + layout 分支投影排版
+    const symMapText = tRender && await tRender.execute({ path: EXAMPLE, symbology: { mode: 'single', color: [217, 162, 60] } });
+    const symMapOut = symMapText && (/渲染完成: (.+?)（/.exec(symMapText) || [])[1];
+    let symMapOk = false;
+    try { symMapOk = !!symMapOut && (await fsp.stat(symMapOut)).size > 500; } catch { /* 缺文件即 false */ }
+    check('动态工具 kanyu_render(symbology single)：编辑模型投影出图落盘',
+      /渲染完成: /.test(String(symMapText)) && symMapOk, String(symMapText).slice(0, 100));
+    const laySymOut = path.join(TMP_DIR, 'kanyu-layout-sym.svg');
+    const laySymText = tRender && await tRender.execute({ path: EXAMPLE, layout: true, title: '符号化布局', out: laySymOut,
+      symbology: { mode: 'graduated', field: 'height', breaks: [20, 40], ramp: 'Jade' } });
+    let laySymSvg = '';
+    try { laySymSvg = await fsp.readFile(laySymOut, 'utf8'); } catch { /* 读取失败即空串 */ }
+    check('动态工具 kanyu_render(layout+symbology graduated)：投影排版 SVG 出图',
+      /排版完成: /.test(String(laySymText)) && laySymSvg.includes('<svg') && laySymSvg.includes('符号化布局'),
+      String(laySymText).slice(0, 100) + ' svg=' + laySymSvg.length);
     // render.layout RPC（2026-08-18 第四十八轮）：kyu 工程模式——布局规格取自
     // 工程清单（page/dpi/scalebar），数据取首个可见图层（source 相对工程目录解析）
     const layRpc = await callRpc('render.layout', { kyu: dshPath('examples', 'demo.kyu'), title: '示例布局A4横' });

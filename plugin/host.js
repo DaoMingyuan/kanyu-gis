@@ -390,7 +390,7 @@ return {
 
     // 布局排版（kanyu render layout，第四十六轮出口）：A4 横/竖页面 +
     // 标题/图例/比例尺/指北针，SVG 或 PNG。样式文件同 renderMap 走 --style-file。
-    async function renderLayout(path, out, title, page, dpi, flags, style) {
+    async function renderLayout(path, out, title, page, dpi, flags, style, symbology) {
       await ensureOutDir()
       const p = await procPath(path)
       const target = out || (OUT_DIR + '\\kanyu-layout-' + Date.now() + '.svg')
@@ -403,6 +403,8 @@ return {
       if (fl.noScalebar) args.push('--no-scalebar')
       if (fl.noNorth) args.push('--no-north')
       if (fl.theme) args.push('--theme', fl.theme === 'dark' ? 'dark' : 'light')
+      // symbology 编辑模型投影（第五十三轮，同 renderMap 语义：显式 style 优先）
+      if ((!style || typeof style !== 'object') && symbology && typeof symbology === 'object') style = symToRule(symbology)
       if (style && typeof style === 'object') {
         const sf = OUT_DIR + '\\kanyu-style-' + Date.now() + '.json'
         await fs.writeText(await fs.resolve(sf), JSON.stringify(style))
@@ -1150,6 +1152,7 @@ return {
         width: { type: 'number', description: '宽度像素（默认 800，layout 模式忽略）' },
         height: { type: 'number', description: '高度像素（默认 600，layout 模式忽略）' },
         style: { type: 'object', description: '属性驱动符号化（StyleRule）：分级 {"type":"graduated","field":"height","stops":[[阈值,"#RRGGBB"],…]（严格升序）}；唯一值 {"type":"categorical","field":"usage","colors":{"类别":"#RRGGBB"},"default":"#888888"}' },
+        symbology: { type: 'object', description: '符号化编辑模型（LayerSymbology，.kyu 工程持久化格式，Host 投影为 StyleRule；style 优先于本参数）：单色 {"mode":"single","color":[R,G,B]}；唯一值 {"mode":"categorical","field":"usage","colors":[["类别",[R,G,B]],…],"other":[R,G,B]}；分级 {"mode":"graduated","field":"h","breaks":[断点,…]（严格升序）,"ramp":"Jade|Amber|Slate"}' },
         layout: { type: 'boolean', description: 'true 走布局排版（kanyu render layout）：A4 页面 + 标题/图例/比例尺/指北针' },
         title: { type: 'string', description: 'layout 模式标题（默认「堪舆布局」）' },
         page: { type: 'string', description: 'layout 页面：a4l（横，默认）| a4p（竖）' },
@@ -1159,11 +1162,11 @@ return {
       async execute(args) {
         if (args.layout) {
           const r = await renderLayout(args.path, args.out, args.title, args.page, args.dpi,
-            { noLegend: args.noLegend, noScalebar: args.noScalebar, noNorth: args.noNorth, theme: args.theme }, args.style)
+            { noLegend: args.noLegend, noScalebar: args.noScalebar, noNorth: args.noNorth, theme: args.theme }, args.style, args.symbology)
           if (!r.run.ok) return '排版失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
           return '排版完成: ' + r.out + '（可 read_image 查看）'
         }
-        const r = await renderMap(args.path, args.theme, args.width, args.height, args.style)
+        const r = await renderMap(args.path, args.theme, args.width, args.height, args.style, args.symbology)
         if (!r.run.ok) return '渲染失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
         return '渲染完成: ' + r.out + (r.pngBase64 ? '（PNG ' + Math.round(r.pngBase64.length * 3 / 4 / 1024) + 'KB，可 read_image 查看）' : '（图片读取失败）')
       },
