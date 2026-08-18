@@ -59,7 +59,7 @@ const GP_TOOLS = [
 
 // 地理编辑算子（组件内 GeoJSON 编辑内核，自我迭代起点；
 // 深度拓扑编辑由 kanyu-edit crate 承接，本组件覆盖轻量在线编辑）
-const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add', 'line-split', 'topo-move']
+const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'vertices-move', 'feature-move', 'hole-add', 'line-split', 'topo-move']
 
 // ---------- 工具函数 ----------
 
@@ -895,6 +895,43 @@ return {
         coords[vi] = [Number(a.x), Number(a.y)].concat(oldPos.slice(2))
         return { ok: true, summary: '要素 #' + i + ' 顶点 ' + vi + ' 已移至 (' + a.x + ', ' + a.y + ')',
           inverse: { op: 'vertex-move', args: { feature: i, ringPath, vertex: vi, x: oldPos[0], y: oldPos[1] } } }
+      } else if (op === 'vertices-move') {
+        // 批量顶点移动（画布框选多顶点一次同移）：moves 逐项同 vertex-move 语义
+        // （ringPath 缺省同款类型分派、保留 Z/M），先全量校验再统一写入——
+        // 任一项非法则整体不变更；单条 undo 逆操作整体回滚（对齐 kanyu-edit 命令原子性）
+        const moves = Array.isArray(a.moves) ? a.moves : null
+        if (!moves || !moves.length) return { ok: false, error: 'vertices-move 需要非空 moves 数组（{feature, ringPath?, vertex, x, y}）' }
+        const resolved = []
+        for (const mv of moves) {
+          const i = Number(mv.feature)
+          const f = feats[i]
+          if (!f) return { ok: false, error: 'feature 越界: ' + mv.feature }
+          const gtype = f.geometry && f.geometry.type
+          const ringPath = Array.isArray(mv.ringPath) ? mv.ringPath
+            : gtype === 'Polygon' ? [0]
+            : (gtype === 'MultiPolygon' || gtype === 'MultiLineString') ? [0, 0] : []
+          let coords = f.geometry && f.geometry.coordinates
+          for (const ri of ringPath) {
+            if (!Array.isArray(coords)) return { ok: false, error: '几何路径解析失败' }
+            coords = coords[Number(ri)]
+          }
+          const vi = Number(mv.vertex)
+          const nx = Number(mv.x), ny = Number(mv.y)
+          if (!isFinite(nx) || !isFinite(ny)) return { ok: false, error: 'vertices-move 需要数值 x/y' }
+          if (gtype === 'Point' && ringPath.length === 0) {
+            if (!Array.isArray(coords) || typeof coords[0] !== 'number') return { ok: false, error: 'Point 几何坐标异常' }
+            resolved.push({ point: f.geometry, coords: null, vi: 0, old: coords.slice(), nx, ny, feature: i, ringPath })
+          } else {
+            if (!Array.isArray(coords) || !Array.isArray(coords[vi])) return { ok: false, error: 'vertex 越界: ' + mv.vertex }
+            resolved.push({ point: null, coords, vi, old: coords[vi].slice(), nx, ny, feature: i, ringPath })
+          }
+        }
+        for (const r of resolved) {
+          if (r.point) r.point.coordinates = [r.nx, r.ny].concat(r.old.slice(2))
+          else r.coords[r.vi] = [r.nx, r.ny].concat(r.old.slice(2))
+        }
+        return { ok: true, summary: '批量移动 ' + resolved.length + ' 个顶点',
+          inverse: { op: 'vertices-move', args: { moves: resolved.map(r => ({ feature: r.feature, ringPath: r.ringPath, vertex: r.vi, x: r.old[0], y: r.old[1] })) } } }
       }
       return { ok: false, error: '未知编辑算子: ' + op }
     }
@@ -1504,7 +1541,7 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/hole-add/line-split/topo-move；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；line-split 线按点打断（对齐 kanyu-edit split_line_at_point：投影最近线段 + 1e-9 吸附顶点，首段就地改+次段插入、属性复制；面切割依赖内核 geo BooleanOps，组件不移植）；topo-move 拓扑共享顶点移动（对齐 kanyu-edit move_shared_vertex：坐标精确相等一次移动全部共享顶点，自逆坐标对换）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/vertices-move/hole-add/line-split/topo-move；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；vertices-move 批量顶点移动（画布框选多顶点一次同移：moves 逐项同 vertex-move 语义，先全量校验再统一写入，单条 undo 整体回滚）；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；line-split 线按点打断（对齐 kanyu-edit split_line_at_point：投影最近线段 + 1e-9 吸附顶点，首段就地改+次段插入、属性复制；面切割依赖内核 geo BooleanOps，组件不移植）；topo-move 拓扑共享顶点移动（对齐 kanyu-edit move_shared_vertex：坐标精确相等一次移动全部共享顶点，自逆坐标对换）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },

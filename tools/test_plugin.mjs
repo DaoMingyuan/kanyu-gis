@@ -577,7 +577,7 @@ async function main() {
 
   // ⑥ 地理编辑（能力 6）
   const ops = await callRpc('edit.ops');
-  check('edit.ops：11 算子（+topo-move）', ops.ok && ops.ops.length === 11 && ops.ops.includes('line-split') && ops.ops.includes('topo-move'));
+  check('edit.ops：12 算子（+vertices-move）', ops.ok && ops.ops.length === 12 && ops.ops.includes('line-split') && ops.ops.includes('vertices-move'));
   const cnt = await callRpc('edit.apply', { path: EXAMPLE, op: 'feature-count' });
   check('edit.apply feature-count = 4', cnt.ok && cnt.count === 4);
   const edited = await callRpc('edit.apply', { path: EXAMPLE, op: 'attribute-set', args: { field: 'dsh_test', value: 1 } });
@@ -734,6 +734,39 @@ async function main() {
   const tpBad = await callRpc('edit.apply', { path: tpRel, op: 'topo-move', args: { x: 99, y: 99, nx: 1, ny: 1 } });
   check('topo-move 校验：坐标无顶点中文报错（未命中）', !tpBad.ok && /拓扑移动未命中/.test(tpBad.error || ''), tpBad.error || '');
 
+  // ⑥++++++++ 顶点框选批量移动（2026-08-18 第六十五轮）：vertices-move 原子批量算子
+  const vmSrc = path.join(TMP_DIR, 'vertices-move-test.geojson');
+  await fsp.writeFile(vmSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]] }, properties: { id: 'P' } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [9, 9, 7] }, properties: { id: 'Q' } },
+  ] }));
+  const vmRel = path.relative(REPO_ROOT, vmSrc);
+  const vm1 = await callRpc('edit.apply', { path: vmRel, op: 'vertices-move', args: { moves: [
+    { feature: 0, ringPath: [0], vertex: 1, x: 5, y: 1 },
+    { feature: 0, ringPath: [0], vertex: 2, x: 5, y: 5 },
+    { feature: 1, x: 10, y: 10 },
+  ] } });
+  let vmOk = false;
+  try {
+    const fs6 = JSON.parse(await fsp.readFile(vm1.output, 'utf8')).features;
+    vmOk = fs6[0].geometry.coordinates[0][1].join(',') === '5,1'
+      && fs6[0].geometry.coordinates[0][2].join(',') === '5,5'
+      && fs6[1].geometry.coordinates.join(',') === '10,10,7';
+  } catch { /* 断言兜底 */ }
+  check('edit.apply vertices-move：批量 3 顶点一次写入（含 Point 特判 + Z 保留）', vm1.ok && vmOk, vm1.summary || vm1.error);
+  const vmUndo = await callRpc('edit.undo', { path: vmRel });
+  let vmBack = false;
+  try {
+    const fs7 = JSON.parse(await fsp.readFile(vmUndo.output, 'utf8')).features;
+    vmBack = fs7[0].geometry.coordinates[0][1].join(',') === '4,0'
+      && fs7[0].geometry.coordinates[0][2].join(',') === '4,4'
+      && fs7[1].geometry.coordinates.join(',') === '9,9,7';
+  } catch { /* 断言兜底 */ }
+  check('vertices-move undo：单条逆操作整体回滚 3 顶点', vmUndo.ok && vmBack, vmUndo.summary || vmUndo.error);
+  const vmBad = await callRpc('edit.apply', { path: vmRel, op: 'vertices-move', args: { moves: [
+    { feature: 0, ringPath: [0], vertex: 1, x: 6, y: 1 }, { feature: 99, x: 0, y: 0 }] } });
+  check('vertices-move 校验：任一项越界整体不变更（先校验后写入）', !vmBad.ok && /feature 越界/.test(vmBad.error || ''), vmBad.error || '');
+
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
   check('scene3d.data：bbox + 高度提取', s3d.ok && Array.isArray(s3d.bbox) && s3d.count >= 3,
@@ -887,8 +920,8 @@ async function main() {
     editCalcKeys.every((k) => clientSrc.includes(k)),
     editCalcKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 编辑页签算子清单同步（2026-08-18 第六十一轮）：OPS/HINTS 入列五件新算子 + 容量 100 提示
-  const editOpsKeys = ["'attributes-replace'", "'feature-move'", "'hole-add'", "'line-split'", "'topo-move'", '容量 100', '算子清单与 EDIT_OPS'];
-  check('client.js 编辑页签算子清单同步（OPS 11 算子入列 + HINTS 示例 + 容量 100 提示）',
+  const editOpsKeys = ["'attributes-replace'", "'feature-move'", "'vertices-move'", "'hole-add'", "'line-split'", "'topo-move'", '容量 100', '算子清单与 EDIT_OPS'];
+  check('client.js 编辑页签算子清单同步（OPS 12 算子入列 + HINTS 示例 + 容量 100 提示）',
     editOpsKeys.every((k) => clientSrc.includes(k)),
     editOpsKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 顶点画布拓扑模式（2026-08-18 第六十二轮）：topoMode 开关 + vUp 双路（topo-move/vertex-move）
@@ -906,6 +939,11 @@ async function main() {
   check('client.js feature-add 画布化（绘制点/线/面三模式 + doAddPoint/applyDrawNew 接线）',
     editAddKeys.every((k) => clientSrc.includes(k)),
     editAddKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 顶点框选批量移动（2026-08-18 第六十五轮）：marquee 橡皮筋 + selRef 选择集 + vertices-move 批量拖拽
+  const editMarqueeKeys = ['marquee', 'setMarquee', 'selRef', 'rectRef', 'editOpts', "op: 'vertices-move'", '框选', '已选 ', '批量移动 '];
+  check('client.js 顶点框选批量移动（marquee 橡皮筋 + selRef 选择集 + vertices-move 批量拖拽接线）',
+    editMarqueeKeys.every((k) => clientSrc.includes(k)),
+    editMarqueeKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
@@ -1026,6 +1064,9 @@ async function main() {
   check('pkg/client.js feature-add 画布化（与动态半同契约）',
     editAddKeys.every((k) => pkgClientSrc.includes(k)),
     editAddKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 顶点框选批量移动（与动态半同契约）',
+    editMarqueeKeys.every((k) => pkgClientSrc.includes(k)),
+    editMarqueeKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

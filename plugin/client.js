@@ -737,8 +737,11 @@ function enumVertices(geom, fi) {
   return out
 }
 // 2D 画布绘制：数据→画布线性映射（y 翻转），几何轮廓 + 顶点方块；
-// drag = {sel, px, py} 时拖拽顶点用拖拽位高亮预览。返回 {proj, unproj, verts}。
-function drawEdit2d(cv, data, drag) {
+// drag = {sel, px, py} 时拖拽顶点用拖拽位高亮预览；drag.batch 存在时
+// 选择集内其余顶点按同一像素位移联动预览（框选批量移动）。
+// opts = {rect:[x0,y0,x1,y1], sel:[verts]} 时叠加框选橡皮筋 + 选中顶点高亮。
+// 返回 {proj, unproj, verts}。
+function drawEdit2d(cv, data, drag, opts) {
   const g = cv.getContext('2d')
   const W = cv.width, H = cv.height
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H) // 纯白画布对齐壳层 mapview 契约
@@ -767,14 +770,26 @@ function drawEdit2d(cv, data, drag) {
     else if (t === 'MultiLineString' || t === 'Polygon') (c || []).forEach((r) => strokeRing(r, t === 'Polygon'))
     else if (t === 'MultiPolygon') (c || []).forEach((poly) => Array.isArray(poly) && poly.forEach((r) => strokeRing(r, true)))
   })
+  const selList = (opts && opts.sel) || []
+  const inSel = (v) => selList.some(s2 => s2.feature === v.feature && s2.vertex === v.vertex && String(s2.ringPath) === String(v.ringPath))
+  const dragOrg = drag && drag.batch && drag.sel ? proj(drag.sel.pos) : null
   const verts = []
   data.features.forEach((f, fi) => { for (const v of enumVertices(f && f.geometry, fi)) verts.push(v) })
   for (const v of verts) {
     const isDrag = drag && drag.sel && drag.sel.feature === v.feature && drag.sel.vertex === v.vertex
       && String(drag.sel.ringPath) === String(v.ringPath)
-    const q = isDrag ? [drag.px, drag.py] : proj(v.pos)
-    g.fillStyle = isDrag ? '#c2614a' : '#4a5a77'
+    let q
+    if (isDrag) q = [drag.px, drag.py]
+    else if (dragOrg && inSel(v)) { const q0 = proj(v.pos); q = [q0[0] + drag.px - dragOrg[0], q0[1] + drag.py - dragOrg[1]] }
+    else q = proj(v.pos)
+    g.fillStyle = isDrag ? '#c2614a' : inSel(v) ? '#d4a017' : '#4a5a77'
     g.fillRect(q[0] - 3, q[1] - 3, 6, 6)
+  }
+  if (opts && opts.rect) {
+    const r = opts.rect
+    g.strokeStyle = '#2D6A5E'; g.lineWidth = 1; g.setLineDash([4, 3])
+    g.strokeRect(Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.abs(r[2] - r[0]), Math.abs(r[3] - r[1]))
+    g.setLineDash([])
   }
   return { proj, unproj, verts }
 }
@@ -794,11 +809,18 @@ function TabEdit(props) {
   const [drawMode, setDrawMode] = React.useState('') // '' | 'hole' | 'split' | 'addPoint' | 'addLine' | 'addPolygon'
   const drawRef = React.useRef([])
   const [drawN, setDrawN] = React.useState(0)
+  // 框选批量移动（2026-08-18 第六十五轮）：marquee 开时画布拖橡皮筋多选顶点
+  // （selRef 选择集，ref 范式同 drawRef）；选择集 ≥2 时拖拽其中任一顶点 →
+  // vertices-move 原子批量算子一次写入（单条 undo 整体回滚）
+  const [marquee, setMarquee] = React.useState(false)
+  const selRef = React.useRef([])
+  const [selN, setSelN] = React.useState(0)
+  const rectRef = React.useRef(null)
   const [out, setOut] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
   // 算子清单与 EDIT_OPS（host.js）保持一致——新增算子须双端同步入列
-  const OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add', 'line-split', 'topo-move']
+  const OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'vertices-move', 'feature-move', 'hole-add', 'line-split', 'topo-move']
   const HINTS = {
     'feature-count': '{}', 'feature-delete': '{"index":0}',
     'feature-add': '{"geometry":{"type":"Point","coordinates":[113.6,34.8]},"properties":{"name":"新点","height":20}}',
@@ -806,6 +828,7 @@ function TabEdit(props) {
     'attribute-delete': '{"field":"temp"}',
     'attributes-replace': '{"index":0,"properties":{"name":"改"}}（整行覆写，null 清空属性表）',
     'vertex-move': '{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}（ringPath 缺省按类型分派：面[0]/多面与多线[0,0]/线与点[]，保留 Z/M）',
+    'vertices-move': '{"moves":[{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}]}（批量移动，单条 undo 整体回滚）',
     'feature-move': '{"index":0,"dx":100,"dy":50}（整要素平移，保留 Z/M）',
     'hole-add': '{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}（面内挖洞，自动闭合；part 多面子面下标）',
     'line-split': '{"index":0,"x":2.5,"y":4}（线按点打断，投影最近线段吸附顶点）',
@@ -878,7 +901,10 @@ function TabEdit(props) {
   const [cvE, setCvE] = React.useState(null)
   const vertDrag = React.useRef(null)
   const mapRef = React.useRef(null)
-  React.useEffect(() => { if (cvE && geo) mapRef.current = drawEdit2d(cvE, geo, null) }, [cvE, geo])
+  React.useEffect(() => {
+    selRef.current = []; setSelN(0) // 几何重载后旧顶点定位失效，清空选择集
+    if (cvE && geo) mapRef.current = drawEdit2d(cvE, geo, null, editOpts())
+  }, [cvE, geo])
   async function loadGeo() {
     setBusy(true); setOut('加载几何…')
     try {
@@ -891,6 +917,11 @@ function TabEdit(props) {
   function vPos(e) {
     const rc = cvE.getBoundingClientRect()
     return [(e.clientX - rc.left) * (cvE.width / rc.width), (e.clientY - rc.top) * (cvE.height / rc.height)]
+  }
+  // 框选/选择集覆盖层参数（橡皮筋矩形 + 选中顶点高亮，供全部重绘点复用）
+  function editOpts() {
+    const r = rectRef.current
+    return { rect: r ? [r.x0, r.y0, r.x1, r.y1] : null, sel: selRef.current }
   }
   function vDown(e) {
     const m = mapRef.current
@@ -907,39 +938,80 @@ function TabEdit(props) {
       drawOverlay()
       return
     }
+    // 框选模式：按下起橡皮筋矩形（松开收顶点入选择集；单击清空选择集）
+    if (marquee) {
+      rectRef.current = { x0: pq[0], y0: pq[1], x1: pq[0], y1: pq[1] }
+      mapRef.current = drawEdit2d(cvE, geo, null, editOpts())
+      return
+    }
     let best = null, bd = 8 * 8
     for (const v of m.verts) {
       const qv = m.proj(v.pos)
       const d = (qv[0] - pq[0]) * (qv[0] - pq[0]) + (qv[1] - pq[1]) * (qv[1] - pq[1])
       if (d < bd) { bd = d; best = v }
     }
-    if (best) { vertDrag.current = { sel: best, px: pq[0], py: pq[1] }; mapRef.current = drawEdit2d(cvE, geo, vertDrag.current) }
+    if (best) {
+      // 命中选择集且集内 ≥2 → 批量拖拽（松开写 vertices-move 原子批量算子）
+      const hitSel = selRef.current.length > 1 && selRef.current.some(s2 => s2.feature === best.feature && s2.vertex === best.vertex && String(s2.ringPath) === String(best.ringPath))
+      vertDrag.current = { sel: best, px: pq[0], py: pq[1], batch: hitSel ? selRef.current : null }
+      mapRef.current = drawEdit2d(cvE, geo, vertDrag.current, editOpts())
+    }
   }
   function vMove(e) {
+    const pq = vPos(e)
+    const rc = rectRef.current
+    if (rc) { rc.x1 = pq[0]; rc.y1 = pq[1]; mapRef.current = drawEdit2d(cvE, geo, null, editOpts()); return }
     const d = vertDrag.current
     if (!d) return
-    const pq = vPos(e)
     d.px = pq[0]; d.py = pq[1]
-    mapRef.current = drawEdit2d(cvE, geo, d)
+    mapRef.current = drawEdit2d(cvE, geo, d, editOpts())
   }
   async function vUp() {
+    const m = mapRef.current
+    // 框选松开：矩形 ≥4px 收顶点入选择集；视为单击则清空选择集
+    const rc = rectRef.current
+    if (rc) {
+      rectRef.current = null
+      if (!m) return
+      if (Math.abs(rc.x1 - rc.x0) < 4 && Math.abs(rc.y1 - rc.y0) < 4) {
+        selRef.current = []; setSelN(0)
+      } else {
+        const xa = Math.min(rc.x0, rc.x1), xb = Math.max(rc.x0, rc.x1)
+        const ya = Math.min(rc.y0, rc.y1), yb = Math.max(rc.y0, rc.y1)
+        selRef.current = m.verts.filter(v => { const q = m.proj(v.pos); return q[0] >= xa && q[0] <= xb && q[1] >= ya && q[1] <= yb })
+        setSelN(selRef.current.length)
+      }
+      mapRef.current = drawEdit2d(cvE, geo, null, editOpts())
+      return
+    }
     const d = vertDrag.current
     if (!d) return
     vertDrag.current = null
-    const m = mapRef.current
     if (!m) return
     const xy = m.unproj(d.px, d.py)
     const rx = Math.round(xy[0] * 1e6) / 1e6, ry = Math.round(xy[1] * 1e6) / 1e6
-    setBusy(true); setOut('写入顶点 (' + rx + ', ' + ry + ')…')
+    setBusy(true)
     try {
-      // 拓扑模式（对齐壳层 Map Topology）：以被拖顶点的原坐标精确匹配，
-      // 松开写 topo-move——共享该坐标的全部顶点（含环闭合首末点）一次同移；
-      // 否则写 vertex-move 单点移动。两路均入 undo 栈一次撤销。
-      const r = topoMode
-        ? await host.call('edit.apply', { path, op: 'topo-move',
-            args: { x: d.sel.pos[0], y: d.sel.pos[1], nx: rx, ny: ry }, inPlace })
-        : await host.call('edit.apply', { path, op: 'vertex-move',
-            args: { feature: d.sel.feature, ringPath: d.sel.ringPath, vertex: d.sel.vertex, x: rx, y: ry }, inPlace })
+      let r
+      if (d.batch) {
+        // 批量拖拽：以被拖顶点位移增量换算全选择集目标坐标，写 vertices-move——
+        // 单条 undo 整体回滚（批量优先于拓扑模式，二者语义互斥）
+        const dx = rx - d.sel.pos[0], dy = ry - d.sel.pos[1]
+        const moves = d.batch.map(v => ({ feature: v.feature, ringPath: v.ringPath, vertex: v.vertex,
+          x: Math.round((v.pos[0] + dx) * 1e6) / 1e6, y: Math.round((v.pos[1] + dy) * 1e6) / 1e6 }))
+        setOut('批量移动 ' + moves.length + ' 个顶点…')
+        r = await host.call('edit.apply', { path, op: 'vertices-move', args: { moves }, inPlace })
+      } else {
+        setOut('写入顶点 (' + rx + ', ' + ry + ')…')
+        // 拓扑模式（对齐壳层 Map Topology）：以被拖顶点的原坐标精确匹配，
+        // 松开写 topo-move——共享该坐标的全部顶点（含环闭合首末点）一次同移；
+        // 否则写 vertex-move 单点移动。两路均入 undo 栈一次撤销。
+        r = topoMode
+          ? await host.call('edit.apply', { path, op: 'topo-move',
+              args: { x: d.sel.pos[0], y: d.sel.pos[1], nx: rx, ny: ry }, inPlace })
+          : await host.call('edit.apply', { path, op: 'vertex-move',
+              args: { feature: d.sel.feature, ringPath: d.sel.ringPath, vertex: d.sel.vertex, x: rx, y: ry }, inPlace })
+      }
       setOut(fmtJson(r))
       const nextPath = (r && r.ok && !inPlace && r.output) ? r.output : path
       if (r && r.ok && nextPath !== path) { store.path = nextPath; setPath(nextPath) }
@@ -947,14 +1019,14 @@ function TabEdit(props) {
         store.rev++; props.notify() // 内容版本号递增广播（同路径变更地图页签亦可感知）
         const g2 = await host.call('edit.geometry', { path: nextPath, maxFeatures: 200 })
         if (g2 && g2.ok) setGeo(g2)
-      } else mapRef.current = drawEdit2d(cvE, geo, null)
+      } else mapRef.current = drawEdit2d(cvE, geo, null, editOpts())
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
   // 绘制覆盖层：重绘几何后叠加攒点折线（挖洞模式 ≥3 点预闭合）
   function drawOverlay() {
     if (!cvE || !geo) return
-    mapRef.current = drawEdit2d(cvE, geo, null)
+    mapRef.current = drawEdit2d(cvE, geo, null, editOpts())
     const pts = drawRef.current
     if (!pts.length || !mapRef.current) return
     const gd = cvE.getContext('2d')
@@ -1031,7 +1103,7 @@ function TabEdit(props) {
     const next = drawMode === mode ? '' : mode
     setDrawMode(next)
     drawRef.current = []; setDrawN(0)
-    if (cvE && geo) mapRef.current = drawEdit2d(cvE, geo, null) // 退出/切换清覆盖层
+    if (cvE && geo) mapRef.current = drawEdit2d(cvE, geo, null, editOpts()) // 退出/切换清覆盖层
   }
   // 字段计算器（壳层 attrtable.rs preview_calc 语义：前 5 行求值预览；应用走
   // data.calc RPC → kanyu data calc 出口；inPlace 原地覆盖，否则写 .edited.geojson）
@@ -1108,7 +1180,15 @@ function TabEdit(props) {
       h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: loadGeo }, '加载几何'),
       h('label', { className: 'kyg-hint' },
         h('input', { type: 'checkbox', checked: topoMode, onChange: e => setTopoMode(e.target.checked) }), ' 拓扑模式（共享顶点一次同移）'),
-      geo ? h('span', { className: 'kyg-hint' }, topoMode ? '拖拽顶点方块，松开写 topo-move（共享坐标全要素同移，撤销可回退）' : '拖拽顶点方块，松开即写 vertex-move（撤销可回退）') : null),
+      h('label', { className: 'kyg-hint' },
+        h('input', { type: 'checkbox', checked: marquee, onChange: e => {
+          setMarquee(e.target.checked)
+          if (!e.target.checked) { selRef.current = []; setSelN(0); if (cvE && geo) mapRef.current = drawEdit2d(cvE, geo, null, editOpts()) }
+        } }), ' 框选'),
+      selN > 0 ? h('span', { className: 'kyg-sel' }, '已选 ' + selN + ' 顶点') : null,
+      geo ? h('span', { className: 'kyg-hint' }, marquee
+        ? '拖橡皮筋框选顶点（单击清空）；关掉框选后拖拽任一选中顶点，整组批量移动（vertices-move 单条撤销）'
+        : topoMode ? '拖拽顶点方块，松开写 topo-move（共享坐标全要素同移，撤销可回退）' : '拖拽顶点方块，松开即写 vertex-move（撤销可回退）') : null),
     geo ? h('canvas', {
       ref: setCvE, className: 'kyg-canvas', width: 540, height: 300,
       style: { cursor: 'crosshair', touchAction: 'none', background: '#fff' },
