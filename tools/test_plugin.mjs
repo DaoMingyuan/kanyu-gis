@@ -679,6 +679,15 @@ async function main() {
   const missing = clientMethods.filter((m) => !rpc.has(m));
   check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 25 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
+  // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
+  // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）
+  const dynMethods = new Set([...clientSrc.matchAll(/host\.call\('([a-z0-9.]+)'/g)].map((m) => m[1]));
+  const pkgMethods = new Set(clientMethods);
+  const dynOnly = [...dynMethods].filter((m) => !pkgMethods.has(m));
+  const pkgOnly = [...pkgMethods].filter((m) => !dynMethods.has(m));
+  check('两半 RPC 面对称一致（动态 ' + dynMethods.size + ' = 静态 ' + pkgMethods.size + '，零独有）',
+    dynOnly.length === 0 && pkgOnly.length === 0 && dynMethods.size === pkgMethods.size,
+    dynOnly.concat(pkgOnly).join(',') || '对称');
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping
   const pkgIndexSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'index.js')), 'utf8');

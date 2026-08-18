@@ -16,6 +16,21 @@
 | `sync-preset.sh` | 把仓库内 preset 源同步到本机 DSH 安装区（`~/.dsh/.agent-presets/kanyu-gis/`）并触发校验 |
 | `sync-local.sh` | **一键本地同步（每次更新后必跑）**：preset 回灌 + 校验 + web profile 静态插件重装（pnpm file: 副本刷新）；运行中的 `dsh web` 实例须重启方生效（组合树/boot 图启动时一次成型，不热加载） |
 
+## 双半差异白名单（第四十二轮盘点）
+
+动态半（`plugin/client.js`）与静态半（`pkg/client.js`）能力面实测一致：RPC
+方法集 18 = 18 零独有（测试器对称锁）、页签 8/8 相同。仅存四处**设计意图
+差异**，改动任一半时不需对齐：
+
+| 差异 | 动态半 | 静态半 | 原因 |
+|------|--------|--------|------|
+| cordis 卡片 | 有（`tool.view.cordis`） | 无 | key:'self' 改写只发生在动态 guard |
+| preset 门控 | 无（装载机制天然门控） | 有（`agentPreset` 快照判定） | 静态包常驻 web profile，须自行判定会话 preset |
+| 样式注入 | `styles.insert`（沙箱服务） | `styleEl.textContent` 内联 | 静态 bundle 无 styles 服务注入 |
+| slot 注册 | 3 处（header/overlay/cordis） | 2 处（header/overlay） | 同上 cordis 行 |
+
+除白名单外的差异即漂移，测试器「两半 RPC 面对称一致」断言会拦截。
+
 ## 七大能力域 → kanyu 内核落点
 
 | 能力 | 组件工具 | kanyu 侧对应物 |
