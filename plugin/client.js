@@ -785,6 +785,7 @@ function TabEdit(props) {
   const [op, setOp] = React.useState('feature-count')
   const [argsText, setArgsText] = React.useState('{}')
   const [inPlace, setInPlace] = React.useState(false)
+  const [topoMode, setTopoMode] = React.useState(false) // 拓扑模式：拖拽改写 topo-move（共享顶点一次同移）
   const [out, setOut] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
@@ -912,8 +913,14 @@ function TabEdit(props) {
     const rx = Math.round(xy[0] * 1e6) / 1e6, ry = Math.round(xy[1] * 1e6) / 1e6
     setBusy(true); setOut('写入顶点 (' + rx + ', ' + ry + ')…')
     try {
-      const r = await host.call('edit.apply', { path, op: 'vertex-move',
-        args: { feature: d.sel.feature, ringPath: d.sel.ringPath, vertex: d.sel.vertex, x: rx, y: ry }, inPlace })
+      // 拓扑模式（对齐壳层 Map Topology）：以被拖顶点的原坐标精确匹配，
+      // 松开写 topo-move——共享该坐标的全部顶点（含环闭合首末点）一次同移；
+      // 否则写 vertex-move 单点移动。两路均入 undo 栈一次撤销。
+      const r = topoMode
+        ? await host.call('edit.apply', { path, op: 'topo-move',
+            args: { x: d.sel.pos[0], y: d.sel.pos[1], nx: rx, ny: ry }, inPlace })
+        : await host.call('edit.apply', { path, op: 'vertex-move',
+            args: { feature: d.sel.feature, ringPath: d.sel.ringPath, vertex: d.sel.vertex, x: rx, y: ry }, inPlace })
       setOut(fmtJson(r))
       const nextPath = (r && r.ok && !inPlace && r.output) ? r.output : path
       if (r && r.ok && nextPath !== path) { store.path = nextPath; setPath(nextPath) }
@@ -998,7 +1005,9 @@ function TabEdit(props) {
     h('div', { className: 'kyg-hint' }, '—— 顶点编辑 ——'),
     h('div', { className: 'kyg-row' },
       h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: loadGeo }, '加载几何'),
-      geo ? h('span', { className: 'kyg-hint' }, '拖拽顶点方块，松开即写 vertex-move（撤销可回退）') : null),
+      h('label', { className: 'kyg-hint' },
+        h('input', { type: 'checkbox', checked: topoMode, onChange: e => setTopoMode(e.target.checked) }), ' 拓扑模式（共享顶点一次同移）'),
+      geo ? h('span', { className: 'kyg-hint' }, topoMode ? '拖拽顶点方块，松开写 topo-move（共享坐标全要素同移，撤销可回退）' : '拖拽顶点方块，松开即写 vertex-move（撤销可回退）') : null),
     geo ? h('canvas', {
       ref: setCvE, className: 'kyg-canvas', width: 540, height: 300,
       style: { cursor: 'crosshair', touchAction: 'none', background: '#fff' },
