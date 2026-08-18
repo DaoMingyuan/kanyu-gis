@@ -124,6 +124,16 @@ window.__ModuleLoader__.load({
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
       }
+      // freshness 自动重扫（2026-08-18 第三十九轮）：当前图层变更为清单外新文件
+      // （查询/编辑/服务拉取产出）时自动重扫一次，计数与清单不滞留；knownRef 防重复
+      const knownRef = React.useRef('')
+      React.useEffect(() => {
+        if (!data || !store.path || store.path === knownRef.current) return
+        const items = (data.dataItems || []).concat(data.dbItems || [], data.mapItems || [])
+        if (items.some(it => it.path === store.path)) return
+        knownRef.current = store.path
+        scan()
+      }, [store.path])
       // 服务链接分类：WFS GetCapabilities 图层发现（services.discover，对齐壳层 services.rs）
       const [svcUrl, setSvcUrl] = React.useState('')
       const [svcLayers, setSvcLayers] = React.useState(null)

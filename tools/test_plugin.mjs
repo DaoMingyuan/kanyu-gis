@@ -544,6 +544,11 @@ async function main() {
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
     catKeys.every((k) => clientSrc.includes(k)),
     catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 目录页签 freshness 自动重扫（2026-08-18 第三十九轮）：清单外新当前图层触发 scan
+  const freshKeys = ['freshness 自动重扫', 'knownRef'];
+  check('client.js 目录页签 freshness 自动重扫（清单外新图层触发 + knownRef 防重复）',
+    freshKeys.every((k) => clientSrc.includes(k)),
+    freshKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 服务链接发现/拉取/底图（2026-08-18 第十五/十六/十七轮）：discover + fetch + wms 预览
   const svcKeys = ['services.discover', 'services.fetch', 'services.wms', '发现图层', '拉取', '预览底图'];
   check('client.js 目录页签服务链接发现/拉取表单（discover + fetch + 拉取按钮）',
@@ -623,6 +628,9 @@ async function main() {
   check('pkg/client.js 目录页签五分类区（与动态半同契约）',
     catKeys.every((k) => pkgClientSrc.includes(k)),
     catKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 目录页签 freshness 自动重扫（与动态半同契约）',
+    freshKeys.every((k) => pkgClientSrc.includes(k)),
+    freshKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 目录页签服务链接发现/拉取表单（与动态半同契约）',
     svcKeys.every((k) => pkgClientSrc.includes(k)),
     svcKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
