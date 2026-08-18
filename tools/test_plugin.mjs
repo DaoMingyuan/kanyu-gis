@@ -305,9 +305,13 @@ async function main() {
       tbReport.ok && /"tool"\s*:\s*"stats"/.test(tbReport.stdout) && /feature_count\\?"?\s*:\s*\\?4/.test(tbReport.stdout),
       String(tbReport.stdout).slice(0, 160));
   } else {
+    // 静态模式双态：CI 无 CLI → 降级中文指引；本机有 CLI → 真实注册表命中
     const tbList = await callRpc('toolbox.list');
-    check('toolbox.list 降级：无 CLI 中文报错指引（不抛异常）',
-      tbList.ok === false && /tool 子命令/.test(String(tbList.error)), String(tbList.error).slice(0, 120));
+    check('toolbox.list 静态双态：无 CLI 降级指引 / 有 CLI 真实注册表',
+      tbList.ok === false
+        ? /tool 子命令/.test(String(tbList.error))
+        : tbList.tools.length === 37 && tbList.tools.some(t => t.id === 'buffer'),
+      String(tbList.ok ? 'tools=' + tbList.tools.length : tbList.error).slice(0, 120));
   }
 
   // ⑥ 地理编辑（能力 6）
@@ -402,6 +406,11 @@ async function main() {
   check('client.js 编辑页签顶点编辑画布（edit.geometry + enumVertices + drawEdit2d）',
     editVertKeys.every((k) => clientSrc.includes(k)),
     editVertKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
+  const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
+  check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
+    tbKeys.every((k) => clientSrc.includes(k)),
+    tbKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -445,6 +454,9 @@ async function main() {
   check('pkg/client.js 编辑页签顶点编辑画布（与动态半同契约）',
     editVertKeys.every((k) => pkgClientSrc.includes(k)),
     editVertKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
+    tbKeys.every((k) => pkgClientSrc.includes(k)),
+    tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));

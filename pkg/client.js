@@ -382,6 +382,92 @@ window.__ModuleLoader__.load({
     }
 
     // 处理：地理处理工具箱
+    // 工具箱全库面板（core::tooldef 37 工具注册表，经 toolbox.list/toolbox.run RPC；
+    // 参数表 ParamKind 驱动动态表单，与壳层工具箱面板同一单一事实来源）
+    const TB_CAT_ORDER = ['Analysis', 'Geometry', 'Selection', 'DataManagement', 'Statistics']
+    const TB_CAT_CN = { Analysis: '矢量分析', Geometry: '矢量几何', Selection: '矢量选择', DataManagement: '数据管理', Statistics: '统计度量' }
+    function tbKind(p) {
+      const k = p.kind
+      if (typeof k === 'string') return { t: k }
+      if (k && typeof k === 'object') {
+        if ('Enum' in k) return { t: 'Enum', options: k.Enum }
+        if ('Field' in k) return { t: 'Field' }
+      }
+      return { t: 'Text' }
+    }
+    function ToolboxPanel(props) {
+      const store = props.store
+      const [tbTools, setTbTools] = React.useState([])
+      const [tbErr, setTbErr] = React.useState('')
+      const [tbId, setTbId] = React.useState('')
+      const [tbKv, setTbKv] = React.useState({})
+      const [tbOutPath, setTbOutPath] = React.useState('')
+      const [tbOut, setTbOut] = React.useState('')
+      const [tbBusy, setTbBusy] = React.useState(false)
+      React.useEffect(() => {
+        hostCall('toolbox.list', {}).then(r => {
+          if (r && r.ok) setTbTools(r.tools)
+          else setTbErr(r && r.error || 'toolbox.list 失败')
+        }).catch(e => setTbErr('RPC 失败: ' + (e && e.message || e)))
+      }, [])
+      const def = tbTools.find(t => t.id === tbId)
+      function pick(id) {
+        setTbId(id); setTbOut(''); setTbOutPath('')
+        const d = tbTools.find(t => t.id === id)
+        const kv = {}
+        if (d) d.params.forEach(p => {
+          const kk = tbKind(p)
+          if (kk.t === 'Boolean') kv[p.key] = p.default || 'false'
+          else if (kk.t === 'Layer') kv[p.key] = p.default || store.path || ''
+          else kv[p.key] = p.default || ''
+        })
+        setTbKv(kv)
+      }
+      async function tbRun() {
+        setTbBusy(true); setTbOut('运行中…')
+        try {
+          const r = await hostCall('toolbox.run', { id: tbId, params: tbKv, output: tbOutPath || undefined })
+          setTbOut(fmtJson(r && r.stdout !== undefined
+            ? { ok: r.ok, exit: r.exitCode, stdout: String(r.stdout).slice(0, 1600), stderr: String(r.stderr).slice(0, 400), error: r.error }
+            : r))
+        } catch (e) { setTbOut('RPC 失败: ' + (e && e.message || e)) }
+        setTbBusy(false)
+      }
+      function widget(p) {
+        const kk = tbKind(p)
+        const set = v => setTbKv(Object.assign({}, tbKv, { [p.key]: v }))
+        if (kk.t === 'Enum') return h('select', { className: 'kyg-input', value: tbKv[p.key] || '', onChange: e => set(e.target.value) },
+          h('option', { value: '' }, '（选择）'),
+          kk.options.map(o => h('option', { key: o[0], value: o[0] }, o[1] + ' (' + o[0] + ')')))
+        if (kk.t === 'Boolean') return h('input', { type: 'checkbox', checked: (tbKv[p.key] || 'false') === 'true', onChange: e => set(e.target.checked ? 'true' : 'false') })
+        const ph = p.hint || (p.required ? '必填' : '可选')
+          + (kk.t === 'LinearUnit' ? '（数值|单位，如 500|米）' : '')
+          + (kk.t === 'MultiLayers' ? '（多路径逗号分隔，≥2）' : '')
+          + (kk.t === 'Layer' ? '（数据文件绝对路径）' : '')
+          + (kk.t === 'Extent' ? '（minx,miny,maxx,maxy）' : '')
+        return h('input', { className: 'kyg-input', value: tbKv[p.key] || '', onChange: e => set(e.target.value), placeholder: ph })
+      }
+      const hasOutFile = def && def.params.some(p => tbKind(p).t === 'OutFile')
+      return h('div', null,
+        h('div', { className: 'kyg-hint', style: { marginTop: '10px', borderTop: '1px solid #e2e5ea', paddingTop: '8px' } },
+          '工具箱全库（core::tooldef 注册表 ' + (tbTools.length || '…') + ' 工具 · kanyu tool 出口）'),
+        tbErr ? h('div', { className: 'kyg-hint' }, tbErr) : null,
+        tbTools.length ? Field('注册表', h('select', { className: 'kyg-input', value: tbId, onChange: e => pick(e.target.value) },
+          h('option', { value: '' }, '（选择工具）'),
+          TB_CAT_ORDER.map(cat => {
+            const items = tbTools.filter(t => t.category === cat)
+            return items.length ? h('optgroup', { key: cat, label: TB_CAT_CN[cat] },
+              items.map(t => h('option', { key: t.id, value: t.id }, t.name + ' (' + t.id + ')'))) : null
+          }))) : null,
+        def ? h('div', { className: 'kyg-hint' }, def.desc) : null,
+        def ? def.params.map(p => h('div', { key: p.key }, Field(p.label + (p.required ? ' *' : ''), widget(p)))) : null,
+        def && !def.report && !hasOutFile ? Field('输出', h('input', { className: 'kyg-input', value: tbOutPath, onChange: e => setTbOutPath(e.target.value), placeholder: 'GeoJSON 路径（缺省打印；多产出工具视作目录）' })) : null,
+        def ? h('div', { className: 'kyg-row' },
+          h('button', { className: 'kyg-btn', disabled: tbBusy, onClick: tbRun }, '运行 ' + def.name)) : null,
+        h(ResultPre, { text: tbOut }),
+      )
+    }
+
     function TabGp(props) {
       const store = props.store
       const [tools, setTools] = React.useState([])
@@ -419,6 +505,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: busy || !input, onClick: run }, '运行')),
         h(ResultPre, { text: out }),
+        h(ToolboxPanel, { store }),
       )
     }
 

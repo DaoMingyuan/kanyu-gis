@@ -1,5 +1,18 @@
 # dsh/ 组件变更记录
 
+## [0.20.0] — 2026-08-18
+
+- **双客户端处理页签工具箱全库表单**：新增 `ToolboxPanel`（动态/静态双端同步）
+  ——`toolbox.list` 拉取 core::tooldef 注册表 37 工具，按五分类（矢量分析/
+  矢量几何/矢量选择/数据管理/统计度量）optgroup 分组下拉；选定工具后按参数表
+  ParamKind 动态生成表单（Enum→中文标签下拉、Boolean→复选、Layer 预填当前
+  图层路径、LinearUnit/MultiLayers/Extent 带格式占位提示、其余文本域），
+  报告类工具直出 stdout、产图层类提供输出路径（多产出视作目录）；运行走
+  `toolbox.run` RPC。GP_TOOLS 13 精选快捷面保留在上方并存。
+- **测试器 +2 断言**（双端 ToolboxPanel/toolbox.list/toolbox.run/TB_CAT_CN
+  契约）；静态模式 toolbox.list 断言改双态（CI 无 CLI 降级指引 / 本机有
+  CLI 真实注册表）；总计 **70/70 全绿**（static 57/57）。RPC 表不变仍 25。
+
 ## [0.19.0] — 2026-08-18
 
 - **处理域深化：工具箱注册表全库接内核 tooldef（37 工具）**：主仓 `kanyu-cli`
