@@ -203,6 +203,13 @@ async function main() {
     /name: 'kanyu_render'[\s\S]*?symbology: \{ type: 'object'/.test(hostSrc));
   check('host.js renderLayout symbology 投影（symToRule 同款，layout 分支同能力）',
     /async function renderLayout[\s\S]*?symToRule\(symbology\)/.test(hostSrc));
+  // 3D 场景符号化着色（2026-08-18 第五十四轮）：scene3dData symbology 投影
+  // 逐要素取色 + catColors 类别色映射 + symbologyMode 回执；工具 schema 同参
+  check('host.js scene3d.data symbology 契约键（symToRule 投影 + catColors + symbologyMode）',
+    /async function scene3dData[\s\S]*?symToRule\(symbology\)/.test(hostSrc)
+      && hostSrc.includes('catColors') && hostSrc.includes('symbologyMode'));
+  check('host.js kanyu_scene3d schema 含 symbology 入参（模型侧 3D 同能力）',
+    /name: 'kanyu_scene3d'[\s\S]*?symbology: \{ type: 'object'/.test(hostSrc));
   // render.layout RPC（2026-08-18 第四十八轮）：kyu 工程布局规格解析 + SVG 文本回传
   check('host.js render.layout 契约键（layoutPreview + kyu 清单解析 + svg 回传 + RPC 注册）',
     /async function layoutPreview[\s\S]*?manifest\.layers/.test(hostSrc)
@@ -598,6 +605,30 @@ async function main() {
   check('scene3d.data 高度范围：heightRange [10,120]（缺 height 字段要素归一 10）',
     s3dNoCat.ok && JSON.stringify(s3dNoCat.heightRange) === '[10,120]',
     'heightRange=' + JSON.stringify(s3dNoCat.heightRange));
+  // 符号化编辑模型着色（2026-08-18 第五十四轮）：symbology 逐要素取色
+  const s3dSym1 = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height', symbology: { mode: 'single', color: [217, 162, 60] } });
+  check('scene3d.data symbology single：全要素同色 #D9A23C + symbologyMode 回执',
+    s3dSym1.ok && s3dSym1.symbologyMode === 'single' && s3dSym1.features.length >= 3
+      && s3dSym1.features.every(f => f.color === '#D9A23C'),
+    'mode=' + s3dSym1.symbologyMode + ' c0=' + (s3dSym1.features[0] || {}).color);
+  const s3dSym2 = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height',
+    symbology: { mode: 'categorical', field: 'usage', colors: [['office', [45, 106, 94]]], other: [136, 136, 136] } });
+  check('scene3d.data symbology categorical：接管 colorField + catColors 映射（命中色/回退色）',
+    s3dSym2.ok && s3dSym2.colorField === 'usage' && s3dSym2.catColors
+      && s3dSym2.catColors.office === '#2D6A5E' && s3dSym2.catColors.residential === '#888888'
+      && s3dSym2.features.some(f => f.color === '#2D6A5E') && s3dSym2.features.some(f => f.color === '#888888'),
+    JSON.stringify(s3dSym2.catColors));
+  const s3dSym3 = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height',
+    symbology: { mode: 'graduated', field: 'height', breaks: [20, 40], ramp: 'Jade' } });
+  // Jade sample(3) = colors[0]/[2]/[4] = #E8F4F0 / #7FBFB2 / #2D6A5E；height∈[10,120]
+  const jadeSet = ['#E8F4F0', '#7FBFB2', '#2D6A5E'];
+  check('scene3d.data symbology graduated：breaks+ramp 逐要素取色（色带取样色域内，缺字段要素不着色）',
+    s3dSym3.ok && s3dSym3.symbologyMode === 'graduated'
+      && s3dSym3.features.filter(f => f.color).every(f => jadeSet.includes(f.color))
+      && s3dSym3.features.filter(f => f.color === '#2D6A5E').length >= 1
+      && s3dSym3.features.filter(f => f.color === '#7FBFB2').length >= 1
+      && s3dSym3.features.some(f => !f.color),
+    JSON.stringify([...new Set(s3dSym3.features.map(f => f.color))]));
   const tS3d = tools.get('kanyu_scene3d');
   const s3dText = tS3d && await tS3d.execute({ path: EXAMPLE, heightField: 'height' });
   check('动态工具 kanyu_scene3d：回执含高度范围 + 工作台 3D 页签接力指引',
@@ -655,6 +686,12 @@ async function main() {
   check('client.js 3D 管线对齐内核 scene3d.rs（yaw/pitch/背面剔除/高度归一化 0.25/拖拽旋转）',
     s3dKeys.every((k) => clientSrc.includes(k)),
     s3dKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 3D 页签符号化行（2026-08-18 第五十四轮）：buildSymbology 复用 +
+  // 模型色 f.color / catColors 图例优先 + symbologyMode HUD
+  const s3dSymKeys = ['catColors', 'f.color', 'symbologyMode', '符号化'];
+  check('client.js 3D 页签符号化行（模型色 f.color + catColors 图例优先）',
+    s3dSymKeys.every((k) => clientSrc.includes(k)),
+    s3dSymKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 地图面板符号化（2026-08-18 第十二轮起步 / 第五十二轮升级为 LayerSymbology
   // 编辑模型）：buildSymbology 构建 single/categorical/graduated + symToForm 回填
   const symKeys = ['buildSymbology', 'symToForm', 'single', 'graduated', 'categorical', '符号化'];
@@ -774,6 +811,9 @@ async function main() {
   check('pkg/client.js 3D 管线对齐内核 scene3d.rs（与动态半同契约）',
     s3dKeys.every((k) => pkgClientSrc.includes(k)),
     s3dKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 3D 页签符号化行（与动态半同契约）',
+    s3dSymKeys.every((k) => pkgClientSrc.includes(k)),
+    s3dSymKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 地图页签符号化控件（与动态半同契约）',
     symKeys.every((k) => pkgClientSrc.includes(k)),
     symKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

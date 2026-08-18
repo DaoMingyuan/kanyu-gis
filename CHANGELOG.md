@@ -1,5 +1,21 @@
 # dsh/ 组件变更记录
 
+## [0.50.0] — 2026-08-18
+
+- **3D 场景符号化着色（第五十四轮，符号化模型打通 3D 管线）**：
+  `scene3d.data` RPC 新增 `symbology` 入参——symToRule 投影后逐要素派生
+  hex 色（categorical 命中色/default 回退 + 自带字段时接管 colorField；
+  graduated 按 stops 末档命中，内核 color_for 同语义；缺字段要素不着色
+  走基色）；响应新增 `catColors`（类别→模型色映射，图例/棱柱同色）与
+  `symbologyMode` 回执。`kanyu_scene3d` 工具 schema 同款入参。双端 3D
+  页签新增符号化行（复用 buildSymbology 三模式控件）+ drawScene3d 模型色
+  优先（f.color → catColors → 哈希色三级回退）+ HUD 符号化标注。
+- **测试器 +7 断言**（host scene3d symbology 契约键 + kanyu_scene3d schema +
+  三模式动态实测（single 同色/categorical catColors 命中回退/graduated
+  色带取样色域+缺字段不着色）+ 双端 3D 符号化行契约键）；总计
+  **152/152 全绿**（static 117/117）。3080 生产桥实测：categorical
+  symbology 3D 着色（catColors 映射 + 逐要素色）通过。
+
 ## [0.49.0] — 2026-08-18
 
 - **模型侧符号化同能力（第五十三轮，kanyu_render 补 symbology 入参）**：

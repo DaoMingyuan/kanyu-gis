@@ -1018,7 +1018,9 @@ function drawScene3d(cv, data, view) {
     if (f.geom === 'Point') { gPoints.push(proj(ring[0][0], ring[0][1], 0)); continue }
     if (f.geom === 'LineString') { gLines.push(ring.map(p => proj(p[0], p[1], 0))); continue }
     if (ring.length < 3) continue
-    const fbase = f.cat != null ? catColor(f.cat) : BASE
+    const fbase = f.color ? (hexToRgb(f.color) || BASE)
+      : f.cat != null ? (data.catColors && data.catColors[f.cat] ? hexToRgb(data.catColors[f.cat]) || catColor(f.cat) : catColor(f.cat))
+      : BASE
     const ground = ring.map(p => toCanvas(p[0], p[1]))
     const top = ring.map(p => proj(p[0], p[1], f.height))
     const sides = []
@@ -1049,6 +1051,7 @@ function drawScene3d(cv, data, view) {
   g.fillStyle = '#6b7489'; g.font = '11px sans-serif'
   g.fillText('堪舆 3D · ' + data.count + ' 要素 · 高度字段 ' + data.heightField +
     (data.colorField ? ' · 着色 ' + data.colorField + '（' + (data.categories || []).length + ' 类）' : '') +
+    (data.symbologyMode ? ' · 符号化 ' + data.symbologyMode : '') +
     ' · 方位角 ' + Math.round(yaw * 180 / Math.PI) + '° 俯仰 ' + Math.round(pitchDeg) + '° · 拖拽旋转', 10, 16)
 }
 
@@ -1057,6 +1060,14 @@ function Tab3d(props) {
   const [path, setPath] = React.useState(store.path)
   const [hf, setHf] = React.useState('height')
   const [cf, setCf] = React.useState('')
+  // 符号化编辑模型（第五十四轮，与地图页签同 buildSymbology 语义）：
+  // none=基色/着色字段哈希色；single/categorical/graduated 由 Host 逐要素取色
+  const [symMethod, setSymMethod] = React.useState('none')
+  const [symField, setSymField] = React.useState('')
+  const [symSpec, setSymSpec] = React.useState('')
+  const [singleColor, setSingleColor] = React.useState('#D9A23C')
+  const [otherColor, setOtherColor] = React.useState('#888888')
+  const [ramp, setRamp] = React.useState('Jade')
   const [data, setData] = React.useState(null)
   const [msg, setMsg] = React.useState('')
   const [busy, setBusy] = React.useState(false)
@@ -1078,10 +1089,12 @@ function Tab3d(props) {
   function onUp() { dragRef.current = null }
   async function load(p) {
     const usePath = p || path
+    const sym = buildSymbology(symMethod, symField, symSpec, singleColor, otherColor, ramp)
+    if (sym && sym.error) { setMsg('符号化参数: ' + sym.error); return }
     setBusy(true); setMsg('制备场景数据中…')
     try {
-      const r = await host.call('scene3d.data', { path: usePath, heightField: hf, maxFeatures: 300, colorField: cf || undefined })
-      if (r && r.ok) { setData(r); setMsg(r.count + '/' + r.total + ' 要素 · bbox ' + fmtJson(r.bbox, 200)) }
+      const r = await host.call('scene3d.data', { path: usePath, heightField: hf, maxFeatures: 300, colorField: cf || undefined, symbology: sym || undefined })
+      if (r && r.ok) { setData(r); setMsg(r.count + '/' + r.total + ' 要素 · bbox ' + fmtJson(r.bbox, 200) + (r.symbologyMode ? ' · 符号化 ' + r.symbologyMode : '')) }
       else setMsg('失败: ' + (r && r.error || '未知'))
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
@@ -1101,6 +1114,19 @@ function Tab3d(props) {
     Field('高度字段', h('input', { className: 'kyg-input', value: hf, onChange: e => setHf(e.target.value) })),
     Field('着色字段', h('input', { className: 'kyg-input', value: cf, onChange: e => setCf(e.target.value), placeholder: '可选：分类着色（如 usage）；留空单色基色' })),
     h('div', { className: 'kyg-row' },
+      h('span', { className: 'kyg-label' }, '符号化'),
+      h('select', { className: 'kyg-input', value: symMethod, onChange: e => setSymMethod(e.target.value) },
+        h('option', { value: 'none' }, '默认'),
+        h('option', { value: 'single' }, '单色 (single)'),
+        h('option', { value: 'categorical' }, '唯一值 (categorical)'),
+        h('option', { value: 'graduated' }, '分级 (graduated)')),
+      symMethod === 'single' ? h('input', { type: 'color', className: 'kyg-input', value: singleColor, onChange: e => setSingleColor(e.target.value) }) : null,
+      symMethod === 'categorical' || symMethod === 'graduated' ? h('input', { className: 'kyg-input', style: { width: '100px' }, placeholder: '字段名', value: symField, onChange: e => setSymField(e.target.value) }) : null,
+      symMethod === 'categorical' || symMethod === 'graduated' ? h('input', { className: 'kyg-input', style: { flex: 1 }, value: symSpec, onChange: e => setSymSpec(e.target.value),
+        placeholder: symMethod === 'graduated' ? '断点,…（严格升序，如 10,20,40）' : '类别:#RRGGBB,…' }) : null,
+      symMethod === 'graduated' ? h('select', { className: 'kyg-input', value: ramp, onChange: e => setRamp(e.target.value) },
+        h('option', { value: 'Jade' }, '青玉'), h('option', { value: 'Amber' }, '琥珀'), h('option', { value: 'Slate' }, '蓝灰')) : null,
+      symMethod === 'categorical' ? h('input', { type: 'color', className: 'kyg-input', title: '<其他> 色', value: otherColor, onChange: e => setOtherColor(e.target.value) }) : null,
       h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => load() }, '加载 3D 场景')),
     h('div', { className: 'kyg-hint' }, msg),
     h('canvas', {
@@ -1108,10 +1134,11 @@ function Tab3d(props) {
       style: { cursor: 'grab', touchAction: 'none' },
       onMouseDown: onDown, onMouseMove: onMove, onMouseUp: onUp, onMouseLeave: onUp,
     }),
-    // 类别图例（catColor 与画布同函数，色块与棱柱同色）
+    // 类别图例（模型色 catColors 优先，缺省 catColor 哈希色，色块与棱柱同色）
     data && data.categories ? h('div', { className: 'kyg-row', style: { flexWrap: 'wrap' } },
       data.categories.map(c => h('span', { key: c, className: 'kyg-hint', style: { marginRight: '10px' } },
-        h('span', { style: { display: 'inline-block', width: '10px', height: '10px', marginRight: '4px', borderRadius: '2px', background: 'rgb(' + catColor(c).join(',') + ')' } }),
+        h('span', { style: { display: 'inline-block', width: '10px', height: '10px', marginRight: '4px', borderRadius: '2px',
+          background: (data.catColors && data.catColors[c]) || 'rgb(' + catColor(c).join(',') + ')' } }),
         c))) : null,
   )
 }

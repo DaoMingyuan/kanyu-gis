@@ -767,7 +767,7 @@ return {
     }
 
     // ------ 能力 7：3D 地理（挤出体数据制备，Client canvas 软件 3D 管线绘制） ------
-    async function scene3dData(path, heightField, maxFeatures, colorField) {
+    async function scene3dData(path, heightField, maxFeatures, colorField, symbology) {
       if (!fs) return { ok: false, error: 'fs service 不可用' }
       const p = await procPath(path)
       let text
@@ -777,6 +777,11 @@ return {
       } catch (e) { return { ok: false, error: '读取失败（3D 数据源目前支持 GeoJSON）: ' + String(e && e.message || e) } }
       let fc
       try { fc = JSON.parse(text) } catch (e) { return { ok: false, error: 'GeoJSON 解析失败' } }
+      // 符号化编辑模型着色（第五十四轮）：symbology 经 symToRule 投影后逐要素
+      // 派生 hex 色（categorical 命中色/default；graduated 按 stops 末档命中，
+      // 内核 color_for 同语义）；categorical 自带字段时接管 colorField。
+      const rule = symbology && typeof symbology === 'object' ? symToRule(symbology) : null
+      if (rule && rule.type === 'categorical' && rule.field) colorField = rule.field
       const feats = fc && Array.isArray(fc.features) ? fc.features : []
       const hf = heightField || 'height'
       const cap = Math.min(Number(maxFeatures) || 300, 1000)
@@ -822,6 +827,19 @@ return {
           const cv = props[colorField]
           if (cv !== undefined && cv !== null) feat.cat = String(cv)
         }
+        // 逐要素符号化取色（rule 存在时优先于 Client 类别哈希色）
+        if (rule) {
+          if (rule.type === 'categorical') {
+            const key = rule.field ? String(props[rule.field] != null ? props[rule.field] : '') : ''
+            feat.color = (rule.field && rule.colors[key]) || rule.default || null
+          } else if (rule.type === 'graduated') {
+            const v = Number(props[rule.field])
+            if (isFinite(v)) {
+              for (const st of rule.stops) { if (v >= st[0]) feat.color = st[1] }
+            }
+          }
+          if (feat.color == null) delete feat.color
+        }
         out.push(feat)
       }
       let categories = null
@@ -836,12 +854,19 @@ return {
         if (seen.length >= 12 && !seen.includes('其他')) seen.push('其他')
         categories = seen
       }
+      // 类别色映射（符号化 categorical 时图例/棱柱用模型色而非哈希色）
+      let catColors = null
+      if (rule && rule.type === 'categorical' && categories) {
+        catColors = {}
+        for (const c of categories) catColors[c] = rule.colors[c] || rule.default || '#888888'
+      }
       // 高度范围（挤出量级摘要）：逐要素 height 已归一（缺字段取 10），顺手累积
       let minH = Infinity, maxH = -Infinity
       for (const f of out) { if (f.height < minH) minH = f.height; if (f.height > maxH) maxH = f.height }
       return {
         ok: true, source: p, heightField: hf,
-        colorField: colorField || null, categories,
+        colorField: colorField || null, categories, catColors,
+        symbologyMode: rule && symbology.mode ? String(symbology.mode) : null,
         heightRange: out.length ? [minH, maxH] : null,
         count: out.length, total: feats.length,
         bbox: isFinite(minX) ? [minX, minY, maxX, maxY] : null,
@@ -1032,7 +1057,7 @@ return {
         undoTop: h.undo.length ? h.undo[h.undo.length - 1].label : null,
         redoTop: h.redo.length ? h.redo[h.redo.length - 1].label : null }
     })
-    harness.handle('scene3d.data', async (a) => scene3dData(a && a.path, a && a.heightField, a && a.maxFeatures, a && a.colorField))
+    harness.handle('scene3d.data', async (a) => scene3dData(a && a.path, a && a.heightField, a && a.maxFeatures, a && a.colorField, a && a.symbology))
 
     // ---------- 动态模型工具（堪舆 AI 能力 → Harness function-calling） ----------
     // 原壳层 LocalDriver 意图匹配/OpenAiDriver function calling 的能力面，
@@ -1273,13 +1298,15 @@ return {
         heightField: { type: 'string', description: '高度字段名（默认 height，无该字段取 10）' },
         maxFeatures: { type: 'number', description: '最大要素数（默认 300）' },
         colorField: { type: 'string', description: '分类着色字段（可选；逐要素带类别值 + 响应带 categories 清单，上限 12 类，Client 3D 视图按类别着色）' },
+        symbology: { type: 'object', description: '符号化编辑模型着色（LayerSymbology，同 kanyu_render symbology 语义）：single 全要素同色 / categorical 按字段命中色（自带字段时接管 colorField，响应带 catColors 类别色映射）/ graduated 按 breaks+ramp 色带逐要素取色' },
       },
       async execute(args) {
-        const r = await scene3dData(args.path, args.heightField, args.maxFeatures, args.colorField)
+        const r = await scene3dData(args.path, args.heightField, args.maxFeatures, args.colorField, args.symbology)
         if (!r.ok) return '3D 数据制备失败: ' + r.error
         return '3D 场景: ' + r.count + '/' + r.total + ' 要素，高度字段 ' + r.heightField
           + (r.heightRange ? '，高度范围 ' + r.heightRange[0] + '~' + r.heightRange[1] : '') + '，bbox=' + JSON.stringify(r.bbox)
           + (r.categories ? '，着色字段 ' + r.colorField + '（' + r.categories.length + ' 类: ' + r.categories.join('/') + '）' : '')
+          + (r.symbologyMode ? '，符号化 ' + r.symbologyMode + ' 逐要素取色' : '')
           + '；交互式 3D 视图：工作台 3D 页签（该数据为当前图层时联动加载）'
       },
     })
