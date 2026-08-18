@@ -795,6 +795,30 @@ async function main() {
   check('动态工具 kanyu_skill：面切割回执含产出清单（2 要素 → path，可接力）',
     typeof skText === 'string' && /技能 .* 完成/.test(skText) && /产出: 2 要素 → /.test(skText) && /接力/.test(skText),
     String(skText).slice(0, 160));
+
+  // ⑥++++++++++ 缓冲区 WASM 技能（2026-08-19 第六十八轮）：buffer_zones guest（geo Buffer）+ param 注入通道
+  const bufSrc = path.join(TMP_DIR, 'buffer-test.geojson');
+  await fsp.writeFile(bufSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: '站点A' } },
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[20, 0], [30, 0]] }, properties: { name: '道路L' } },
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[40, 0], [50, 0], [50, 10], [40, 10], [40, 0]]] }, properties: { name: '地块P' } },
+  ] }));
+  const bufRel = path.relative(REPO_ROOT, bufSrc);
+  const bufOut = path.join(TMP_DIR, 'buffer-out.geojson');
+  const bf1 = await callRpc('skill.run', { skill: 'dsh/skills/buffer_zones.wasm', input: bufRel, output: path.relative(REPO_ROOT, bufOut), param: { _distance: 5 } });
+  let bfOk = false;
+  try {
+    const fs10 = JSON.parse(await fsp.readFile(bufOut, 'utf8')).features;
+    bfOk = fs10.length === 3 && fs10.every(f => f.geometry.type === 'Polygon' && f.properties._distance === 5 && typeof f.properties.name === 'string');
+  } catch { /* 断言兜底 */ }
+  check('skill.run 缓冲区：param 注入 _distance + buffer_zones.wasm 点/线/面膨胀为面（属性继承）', bf1.ok && bfOk, String(bf1.stderr || bf1.error || '').slice(0, 120));
+  const bfNoParam = await callRpc('skill.run', { skill: 'dsh/skills/buffer_zones.wasm', input: bufRel });
+  check('skill.run 缓冲区校验：缺 param 中文报错（guest _role=param 契约）', !bfNoParam.ok && /未找到缓冲参数/.test(bfNoParam.stderr || ''), String(bfNoParam.stderr || '').slice(0, 120));
+  const bfToolOut = path.join(TMP_DIR, 'buffer-tool.geojson');
+  const bfText = tSkill && await tSkill.execute({ skill: 'dsh/skills/buffer_zones.wasm', input: bufRel, output: path.relative(REPO_ROOT, bfToolOut), param: { _distance: 2 } });
+  check('动态工具 kanyu_skill：缓冲区回执含产出清单（3 要素 → path，可接力）',
+    typeof bfText === 'string' && /技能 .* 完成/.test(bfText) && /产出: 3 要素 → /.test(bfText) && /接力/.test(bfText),
+    String(bfText).slice(0, 160));
   }
 
   // ⑦ 3D 地理（能力 7）

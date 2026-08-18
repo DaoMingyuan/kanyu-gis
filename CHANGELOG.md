@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.64.0] — 2026-08-19
+
+- **缓冲区 WASM 技能（第六十八轮，技能沙箱第二算子）**：新 guest crate
+  `dsh/skills/buffer_zones/`（split_polygons 模板 + geo 0.33 `Buffer`
+  round join——点→近圆面 / 线→条带面 / 面→外扩面，geojson crate 转
+  geo-types Geometry，属性继承 + `_distance` 回写、多部附 `_part`），
+  产出 `dsh/skills/buffer_zones.wasm`（511KB 入仓）；缓冲距离经 `_role`
+  注入约定传递——host.js `skillRun` 增 `param` 通道（参数键值注入
+  `_role="param"` 参数要素走滚动临时输入，与 cutLine 切割线注入并轨），
+  `skill.run` RPC 与 `kanyu_skill` 模型工具参数面同步加 `param`。
+- 测试器 196→**199** / static 156（+3 功能实测：param 注入点线面膨胀
+  属性继承 / 缺 param 中文报错 / kanyu_skill 缓冲区回执接力，均入
+  STATIC_ONLY 门控块）；host.js 激活日志「8 动态工具」计数修正为 9。
+
 ## [0.63.0] — 2026-08-18
 
 - **kanyu_skill 模型工具（第六十七轮，面切割入 AI 工具面）**：动态工具
