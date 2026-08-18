@@ -1190,6 +1190,7 @@ window.__ModuleLoader__.load({
       const [bufDist, setBufDist] = React.useState('')
       const [ovlOp, setOvlOp] = React.useState('intersect')
       const [ovlPath2, setOvlPath2] = React.useState('')
+      const [disField, setDisField] = React.useState('')
       async function skillRelay(r, outPath, label) {
         if (r && r.ok) {
           store.path = outPath; setPath(outPath)
@@ -1221,6 +1222,15 @@ window.__ModuleLoader__.load({
         try {
           const r = await hostCall('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: path, input2: ovlPath2, output: outPath, param: { _op: ovlOp } })
           await skillRelay(r, outPath, '叠加分析')
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
+      }
+      async function applyDissolve() {
+        if (!disField) { setOut('融合需要分组字段名'); return }
+        const outPath = 'dsh/output/kanyu-dissolve-' + Date.now() + '.geojson'
+        setBusy(true); setOut('融合分析中（按 ' + disField + ' 分组合并）…')
+        try {
+          const r = await hostCall('skill.run', { skill: 'dsh/skills/dissolve_field.wasm', input: path, output: outPath, param: { _field: disField } })
+          await skillRelay(r, outPath, '融合')
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
       }
       return h('div', null,
@@ -1323,6 +1333,9 @@ window.__ModuleLoader__.load({
             h('option', { value: 'difference' }, '差集 difference')),
           h('input', { className: 'kyg-input', value: ovlPath2, placeholder: '第二图层路径（叠加层，GeoJSON）', onChange: e => setOvlPath2(e.target.value) }),
           h('button', { className: 'kyg-btn', disabled: busy || !path || !ovlPath2, onClick: applyOverlay }, '叠加分析')),
+        h('div', { className: 'kyg-row' },
+          h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: disField, placeholder: '融合分组字段名（面要素按值合并）', onChange: e => setDisField(e.target.value) }),
+          h('button', { className: 'kyg-btn', disabled: busy || !path || !disField, onClick: applyDissolve }, '融合')),
         h(ResultPre, { text: out }),
       )
     }

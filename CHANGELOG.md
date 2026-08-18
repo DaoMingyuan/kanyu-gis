@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.67.0] — 2026-08-19
+
+- **融合 WASM 技能（第七十一轮，技能沙箱第四算子）**：新 guest crate
+  `dsh/skills/dissolve_field/`（geo 0.33 BooleanOps union 组内折叠——
+  按 `_field` 值分组合并面要素，相邻并单部 / 相离附 `_part`，properties
+  留分组字段 + `_count`；缺失/空值归缺失组，非面要素中文报错），产出
+  `dsh/skills/dissolve_field.wasm`（380KB 入仓）；双端编辑页签技能分析区
+  加融合行（分组字段输入 → param `_field` 注入，skillRelay 接力）。
+- 测试器 205→**207** / static 158（+2 功能实测：分组合并 _count/_part /
+  缺 _field 中文报错，均入 STATIC_ONLY 门控块；契约键扩 3 键不计数）。
+
 ## [0.66.0] — 2026-08-19
 
 - **技能画布交互（第七十轮，WASM 技能入编辑页签对话框）**：双端 client.js

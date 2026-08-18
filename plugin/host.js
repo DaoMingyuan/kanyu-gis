@@ -1596,13 +1596,13 @@ return {
 
     textTool({
       name: 'kanyu_skill',
-      description: 'WASM 技能沙箱（总规 §4.5「以 WASM 为技能」，kanyu skill run 出口）：内置 split_polygons 面切割——cutLine 切割线横贯面要素劈分（geo Buffer+BooleanOps 差集，属性继承 + _part 序号；切割线须横贯目标面，原数据不动、产出新图层）、buffer_zones 缓冲区——param {_distance} 按距离膨胀点/线/面为面（geo Buffer round join，属性继承 + _distance/_part；距离须为正地图单位）、overlay_ops 叠加分析——param {_op: intersect/union/difference} + input2 第二图层（geo BooleanOps：相交两两配对基准属性继承 / 合并整体 / 差集基准减叠加，仅面要素）；技能为 wasmtime 沙箱 WASM 组件（无 IO、fuel 配额），单一事实源 guest 源码在 dsh/skills/。',
+      description: 'WASM 技能沙箱（总规 §4.5「以 WASM 为技能」，kanyu skill run 出口）：内置 split_polygons 面切割——cutLine 切割线横贯面要素劈分（geo Buffer+BooleanOps 差集，属性继承 + _part 序号；切割线须横贯目标面，原数据不动、产出新图层）、buffer_zones 缓冲区——param {_distance} 按距离膨胀点/线/面为面（geo Buffer round join，属性继承 + _distance/_part；距离须为正地图单位）、overlay_ops 叠加分析——param {_op: intersect/union/difference} + input2 第二图层（geo BooleanOps：相交两两配对基准属性继承 / 合并整体 / 差集基准减叠加，仅面要素）、dissolve_field 融合——param {_field} 按字段分组合并面要素（geo BooleanOps union 组内折叠，properties 留分组字段 + _count，多部附 _part）；技能为 wasmtime 沙箱 WASM 组件（无 IO、fuel 配额），单一事实源 guest 源码在 dsh/skills/。',
       parameters: {
-        skill: { type: 'string', required: true, description: '技能路径（内置：dsh/skills/split_polygons.wasm / dsh/skills/buffer_zones.wasm / dsh/skills/overlay_ops.wasm）' },
+        skill: { type: 'string', required: true, description: '技能路径（内置：dsh/skills/split_polygons.wasm / dsh/skills/buffer_zones.wasm / dsh/skills/overlay_ops.wasm / dsh/skills/dissolve_field.wasm）' },
         input: { type: 'string', required: true, description: '输入图层路径（FeatureCollection GeoJSON；overlay_ops 为基准层）' },
         output: { type: 'string', description: '输出路径（可选，缺省落 dsh/output/）' },
         cutLine: { type: 'array', description: '切割线坐标 [[x,y],...]（split_polygons 必填，≥2 点，注入 _role=cut 走临时输入）' },
-        param: { type: 'object', additionalProperties: true, description: '技能参数键值（buffer_zones 必填 {"_distance": 数值}——缓冲距离，地图单位、> 0；overlay_ops 必填 {"_op": "intersect/union/difference"}；注入 _role=param 参数要素走临时输入）' },
+        param: { type: 'object', additionalProperties: true, description: '技能参数键值（buffer_zones 必填 {"_distance": 数值}——缓冲距离，地图单位、> 0；overlay_ops 必填 {"_op": "intersect/union/difference"}；dissolve_field 必填 {"_field": "字段名"}——融合分组字段；注入 _role=param 参数要素走临时输入）' },
         input2: { type: 'string', description: '第二图层路径（overlay_ops 必填，叠加层——要素注入 _role=overlay 走临时输入）' },
       },
       async execute(args) {
