@@ -15,6 +15,7 @@
 | `presets/kanyu-gis/` | GIS 模式 agent preset：`preset.yml` + `agent.cordis.yml` + `skills/kanyu-gis/SKILL.md`（七域能力地图技能） |
 | `examples/` | 演示数据（GeoJSON） |
 | `tools/verify_preset.mjs` | preset 可加载性旁路校验：`node tools/verify_preset.mjs --preset-dir presets` |
+| `tools/test_plugin.mjs` | 组件本地测试器：`node tools/test_plugin.mjs`（node:vm 等价沙箱 + 真实 kanyu CLI，23 项断言） |
 | `sync-preset.sh` | preset 同步到本机 DSH 安装区（`~/.dsh/.agent-presets/kanyu-gis/`）并校验 |
 
 ## 七大能力域
@@ -41,12 +42,22 @@
 # 同步 preset 到本机 DSH 安装区（含旁路校验）
 bash sync-preset.sh
 
-# 新开 GIS 模式会话
+# 新开 GIS 模式会话（web profile；组件动态包经 cordis_define/cordis_run 挂载）
 dsh run --preset kanyu-gis -w <工作区目录>
 
 # 或在已有会话中挂载
 cordis_mount "$HOME/.dsh/.agent-presets/kanyu-gis" kanyu-gis
 ```
+
+## 本地测试
+
+```bash
+node tools/test_plugin.mjs   # 23 项断言：14 RPC + 8 动态工具 + 七大能力实证 + Client 静态结构
+```
+
+边界：组件动态包（cordis_define/cordis_run）与 preset 挂载依赖 web profile 的 Host
+运行时；`dsh --profile headless` 无 roster/runner，仅适用于「DSH 会话 × kanyu CLI」
+链路冒烟。
 
 ## 自我迭代边界
 
