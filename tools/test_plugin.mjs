@@ -753,6 +753,24 @@ async function main() {
   try { bridgeOk = bridgeCode === 200 && JSON.parse(bridgeBody).ok === true; } catch { /* 断言兜底 */ }
   check('pkg/index.js RPC 桥实测：POST /kanyu-gis/call ' + bridgeMethod + ' → 200 + ok', bridgeOk,
     'code=' + bridgeCode + ' body=' + bridgeBody.slice(0, 60));
+  // 桥 UTF-8 正文契约（2026-08-18 第四十五轮）：Buffer 分片按 UTF-8 解码——中文
+  // 路径参数无 charset 头亦不乱码。生产误判复核：乱码源是 curl.exe 命令行参数
+  // GBK 化（--data-binary @UTF-8 文件则全链路正确），桥 Buffer 拼接本就 UTF-8；
+  // 此断言锁死回归（两种模式皆覆盖，中文目录自建自扫不经 CLI）
+  const cnDir = path.join(TMP_DIR, '中文目录');
+  await fsp.mkdir(cnDir, { recursive: true });
+  await fsp.writeFile(path.join(cnDir, '样例.geojson'), '{"type":"FeatureCollection","features":[]}');
+  let cnCode = 0; let cnBody = '';
+  const cnReq = new (await import('node:events')).EventEmitter();
+  cnReq.method = 'POST'; cnReq.url = '/kanyu-gis/call';
+  const cnRes = { writeHead(c) { cnCode = c }, end(b) { cnBody = b } };
+  await route.handler(cnReq, cnRes);
+  cnReq.emit('data', Buffer.from(JSON.stringify({ method: 'catalog.list', args: { dir: cnDir, depth: 1 } }), 'utf8'));
+  cnReq.emit('end');
+  for (let i = 0; i < 300 && !cnBody; i++) await new Promise((r) => setTimeout(r, 100));
+  check('pkg/index.js RPC 桥 UTF-8 正文：中文路径参数解码正确（catalog.list 中文目录命中）',
+    cnCode === 200 && /"count":\s*1/.test(cnBody) && cnBody.includes('中文目录'),
+    'code=' + cnCode + ' body=' + cnBody.slice(0, 120));
 
   // ---------- 清理 ----------
   await fsp.rm(TMP_DIR, { recursive: true, force: true });

@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.42.0] — 2026-08-18
+
+- **中文路径根因复核（推翻第四十四轮「shell 桥 GBK 乱码」初判）**：逐项隔离
+  实证——pwsh 直连中文路径正常、桥 ASCII 越 workspace 正常、catalog.list
+  中文目录在无 charset 头时乱码而 `--data-binary @UTF-8 文件` 全链路正确
+  → **乱码源是 curl.exe 命令行参数 GBK 化（测试方法学伪影），组件桥
+  Buffer 拼接 + JSON.parse 本就按 UTF-8 正确解码**，生产浏览器 Client
+  （fetch/JSON.stringify 恒 UTF-8）中文路径全链路无恙。组件代码零改动。
+- **测试器 +1 断言**（桥 UTF-8 正文回归锁：中文目录自建自扫不经 CLI，
+  两种模式皆覆盖）；总计 **123/123 全绿**（static 96/96）。
+
 ## [0.41.0] — 2026-08-18
 
 - **字段计算器 UI 面板（双端编辑页签 ƒx 区）**：host 半新增 `data.calc` RPC
