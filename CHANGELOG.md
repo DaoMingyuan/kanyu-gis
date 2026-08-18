@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.16.0] — 2026-08-18
+
+- **编辑域深化：顶点编辑画布（壳层 edit.rs 顶点会话语义）**：新增
+  `edit.geometry` RPC（RPC 表 21→**22**）——顶点编辑专用数据源，原样几何
+  **不抽稀**（scene3d.data 有抽稀预算，顶点下标须与文件一致故不可用），
+  上限 200 要素 + bbox。双客户端编辑页签新增顶点编辑画布：`enumVertices`
+  按几何类型枚举顶点（ringPath 对齐 host vertex-move 的 GeomPath 三级
+  定位：LineString []、MultiLineString/Polygon [环/部件]、MultiPolygon
+  [部件, 环]），`drawEdit2d` 纯白画布（壳层 mapview 契约）轮廓 + 顶点
+  方块；点选 8px 命中 → 拖拽高亮预览 → 松开写 `edit.apply vertex-move`
+  → 重载几何；非原地模式输出路径自动设为当前图层。
+- **测试器 +3 断言**（edit.geometry 原样几何契约 + 双端顶点画布契约），
+  RPC 计数断言 21→22；总计 **62/62 全绿**（static 51/51）。3080 桥实测：
+  edit.geometry 返回 4/4 要素原样几何 + bbox 正确。
+
 ## [0.15.0] — 2026-08-18
 
 - **编辑域深化：属性单元格编辑（壳层 attrtable.rs/edit.rs 语义）**：双客户端

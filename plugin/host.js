@@ -437,6 +437,29 @@ return {
         return null
       } catch (e) { return writeHint(e) }
     }
+    // 顶点编辑画布数据源：原样几何（顶点下标必须与文件一致——scene3d.data
+    // 有抽稀预算不可用），上限 200 要素防巨型图层卡画布。
+    function walkCoords(c, fn) {
+      if (!Array.isArray(c)) return
+      if (typeof c[0] === 'number') { fn(c); return }
+      for (const s of c) walkCoords(s, fn)
+    }
+    async function editGeometry(path, maxFeatures) {
+      const p = await procPath(path)
+      const r = await editReadFc(p)
+      if (r.error) return { ok: false, error: r.error }
+      const cap = Math.min(Number(maxFeatures) || 200, 1000)
+      const feats = r.fc.features.slice(0, cap)
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const f of feats) walkCoords(f && f.geometry && f.geometry.coordinates, (xy) => {
+        const x = Number(xy[0]), y = Number(xy[1])
+        if (!isFinite(x) || !isFinite(y)) return
+        if (x < minX) minX = x; if (x > maxX) maxX = x
+        if (y < minY) minY = y; if (y > maxY) maxY = y
+      })
+      return { ok: true, source: p, count: feats.length, total: r.fc.features.length,
+        bbox: isFinite(minX) ? [minX, minY, maxX, maxY] : null, features: feats }
+    }
     async function editApply(path, op, args, inPlace) {
       if (!fs) return { ok: false, error: 'fs service 不可用' }
       if (EDIT_OPS.indexOf(op) < 0) return { ok: false, error: '未知编辑算子: ' + op + '（可用: ' + EDIT_OPS.join('/') + '）' }
@@ -705,6 +728,7 @@ return {
     harness.handle('geoprocess.list', async () => ({ ok: true, tools: GP_TOOLS }))
     harness.handle('geoprocess.run', async (a) => geoprocessRun(a && a.tool, a && a.input, a && a.input2, a && a.output, a && a.params))
     harness.handle('edit.ops', async () => ({ ok: true, ops: EDIT_OPS }))
+    harness.handle('edit.geometry', async (a) => editGeometry(a && a.path, a && a.maxFeatures))
     harness.handle('edit.apply', async (a) => editApply(a && a.path, a && a.op, a && a.args, !!(a && a.inPlace)))
     harness.handle('edit.undo', async (a) => editUndoRedo(a && a.path, 'undo'))
     harness.handle('edit.redo', async (a) => editUndoRedo(a && a.path, 'redo'))

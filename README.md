@@ -25,7 +25,7 @@
 | 坐标框架 | `kanyu_crs` | `kanyu data reproject`（EPSG 全库） |
 | 工程目录 | Client 目录页签 | `catalog.list` RPC（扩展名矩阵对齐 `format.rs`） |
 | 地理处理 | `kanyu_geoprocess` | `kanyu analysis <13 工具>`（QGIS 语义） |
-| 地理编辑 | `kanyu_edit` | 组件内 GeoJSON 编辑内核（6 算子 + 命令逆操作双栈 undo/redo，对齐 `kanyu-edit` 范式）+ 属性单元格编辑（点选行写入）；深度拓扑编辑由 `kanyu-edit` crate 承接 |
+| 地理编辑 | `kanyu_edit` | 组件内 GeoJSON 编辑内核（6 算子 + 命令逆操作双栈 undo/redo，对齐 `kanyu-edit` 范式）+ 属性单元格编辑（点选行写入）+ 顶点编辑画布（拖拽写 vertex-move）；深度拓扑编辑由 `kanyu-edit` crate 承接 |
 | 3D 地理 | `kanyu_scene3d` | 挤出体场景数据制备 + Client canvas 软件 3D 管线（对齐 scene3d.rs：yaw/pitch 拖拽旋转/背面剔除/质心纵深排序/两档明暗） |
 
 另注册 `kanyu_introspect`（系统自省，对齐 `kanyu introspect --json`）。

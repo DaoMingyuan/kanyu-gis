@@ -392,6 +392,61 @@ window.__ModuleLoader__.load({
     }
 
     // 编辑：地理编辑
+    // 顶点编辑画布助手：枚举各几何类型的顶点（ringPath 对齐 host vertex-move 的
+    // GeomPath 三级定位：LineString []、MultiLineString/Polygon [环/部件]、
+    // MultiPolygon [部件, 环]；Point 无顶点编辑）。
+    function enumVertices(geom, fi) {
+      const t = geom && geom.type, c = geom && geom.coordinates
+      const out = []
+      if (!t || !Array.isArray(c)) return out
+      if (t === 'LineString') c.forEach((p, vi) => out.push({ feature: fi, ringPath: [], vertex: vi, pos: p }))
+      else if (t === 'MultiLineString' || t === 'Polygon') c.forEach((ring, ri) => Array.isArray(ring) && ring.forEach((p, vi) => out.push({ feature: fi, ringPath: [ri], vertex: vi, pos: p })))
+      else if (t === 'MultiPolygon') c.forEach((poly, pi) => Array.isArray(poly) && poly.forEach((ring, ri) => Array.isArray(ring) && ring.forEach((p, vi) => out.push({ feature: fi, ringPath: [pi, ri], vertex: vi, pos: p }))))
+      return out
+    }
+    // 2D 画布绘制：数据→画布线性映射（y 翻转），几何轮廓 + 顶点方块；
+    // drag = {sel, px, py} 时拖拽顶点用拖拽位高亮预览。返回 {proj, unproj, verts}。
+    function drawEdit2d(cv, data, drag) {
+      const g = cv.getContext('2d')
+      const W = cv.width, H = cv.height
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H) // 纯白画布对齐壳层 mapview 契约
+      const bb = data.bbox
+      if (!bb) { g.fillStyle = '#666'; g.font = '12px sans-serif'; g.fillText('（无几何）', 12, 20); return null }
+      const pad = 16
+      const s = Math.min((W - 2 * pad) / Math.max(1e-12, bb[2] - bb[0]), (H - 2 * pad) / Math.max(1e-12, bb[3] - bb[1]))
+      const ox = pad + ((W - 2 * pad) - (bb[2] - bb[0]) * s) / 2
+      const oy = pad + ((H - 2 * pad) - (bb[3] - bb[1]) * s) / 2
+      const proj = (p) => [ox + (Number(p[0]) - bb[0]) * s, H - (oy + (Number(p[1]) - bb[1]) * s)]
+      const unproj = (px, py) => [bb[0] + (px - ox) / s, bb[1] + (H - py - oy) / s]
+      function strokeRing(ring, close) {
+        if (!Array.isArray(ring) || !ring.length) return
+        g.beginPath()
+        ring.forEach((p, i) => { const q = proj(p); if (i === 0) g.moveTo(q[0], q[1]); else g.lineTo(q[0], q[1]) })
+        if (close) g.closePath()
+        g.stroke()
+      }
+      g.strokeStyle = '#c2614a'; g.lineWidth = 1.5
+      data.features.forEach((f) => {
+        const gm = f && f.geometry
+        if (!gm) return
+        const t = gm.type, c = gm.coordinates
+        if (t === 'Point') { const q = proj(c); g.beginPath(); g.arc(q[0], q[1], 4, 0, 7); g.stroke() }
+        else if (t === 'LineString') strokeRing(c, false)
+        else if (t === 'MultiLineString' || t === 'Polygon') (c || []).forEach((r) => strokeRing(r, t === 'Polygon'))
+        else if (t === 'MultiPolygon') (c || []).forEach((poly) => Array.isArray(poly) && poly.forEach((r) => strokeRing(r, true)))
+      })
+      const verts = []
+      data.features.forEach((f, fi) => { for (const v of enumVertices(f && f.geometry, fi)) verts.push(v) })
+      for (const v of verts) {
+        const isDrag = drag && drag.sel && drag.sel.feature === v.feature && drag.sel.vertex === v.vertex
+          && String(drag.sel.ringPath) === String(v.ringPath)
+        const q = isDrag ? [drag.px, drag.py] : proj(v.pos)
+        g.fillStyle = isDrag ? '#c2614a' : '#4a5a77'
+        g.fillRect(q[0] - 3, q[1] - 3, 6, 6)
+      }
+      return { proj, unproj, verts }
+    }
+
     function TabEdit(props) {
       const store = props.store
       const [path, setPath] = React.useState(store.path)
@@ -455,6 +510,67 @@ window.__ModuleLoader__.load({
       }
       const thS = { textAlign: 'left', padding: '3px 8px', borderBottom: '1px solid rgba(128,128,128,.4)', position: 'sticky', top: 0, background: 'rgba(128,128,128,.12)', whiteSpace: 'nowrap' }
       const tdS = { padding: '2px 8px', borderBottom: '1px solid rgba(128,128,128,.15)', whiteSpace: 'nowrap', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }
+      // 顶点编辑画布（壳层 edit.rs 顶点会话语义）：edit.geometry 原样几何 →
+      // 点选/拖拽顶点方块 → 松开写 vertex-move（edit.apply），成功后重载几何
+      const [geo, setGeo] = React.useState(null)
+      const [cvE, setCvE] = React.useState(null)
+      const vertDrag = React.useRef(null)
+      const mapRef = React.useRef(null)
+      React.useEffect(() => { if (cvE && geo) mapRef.current = drawEdit2d(cvE, geo, null) }, [cvE, geo])
+      async function loadGeo() {
+        setBusy(true); setOut('加载几何…')
+        try {
+          const r = await hostCall('edit.geometry', { path, maxFeatures: 200 })
+          if (r && r.ok) { setGeo(r); setOut('顶点编辑: ' + r.count + '/' + r.total + ' 要素——拖拽顶点方块，松开写入 vertex-move') }
+          else setOut('几何加载失败: ' + (r && r.error || '未知'))
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
+      function vPos(e) {
+        const rc = cvE.getBoundingClientRect()
+        return [(e.clientX - rc.left) * (cvE.width / rc.width), (e.clientY - rc.top) * (cvE.height / rc.height)]
+      }
+      function vDown(e) {
+        const m = mapRef.current
+        if (!m) return
+        const pq = vPos(e)
+        let best = null, bd = 8 * 8
+        for (const v of m.verts) {
+          const qv = m.proj(v.pos)
+          const d = (qv[0] - pq[0]) * (qv[0] - pq[0]) + (qv[1] - pq[1]) * (qv[1] - pq[1])
+          if (d < bd) { bd = d; best = v }
+        }
+        if (best) { vertDrag.current = { sel: best, px: pq[0], py: pq[1] }; mapRef.current = drawEdit2d(cvE, geo, vertDrag.current) }
+      }
+      function vMove(e) {
+        const d = vertDrag.current
+        if (!d) return
+        const pq = vPos(e)
+        d.px = pq[0]; d.py = pq[1]
+        mapRef.current = drawEdit2d(cvE, geo, d)
+      }
+      async function vUp() {
+        const d = vertDrag.current
+        if (!d) return
+        vertDrag.current = null
+        const m = mapRef.current
+        if (!m) return
+        const xy = m.unproj(d.px, d.py)
+        const rx = Math.round(xy[0] * 1e6) / 1e6, ry = Math.round(xy[1] * 1e6) / 1e6
+        setBusy(true); setOut('写入顶点 (' + rx + ', ' + ry + ')…')
+        try {
+          const r = await hostCall('edit.apply', { path, op: 'vertex-move',
+            args: { feature: d.sel.feature, ringPath: d.sel.ringPath, vertex: d.sel.vertex, x: rx, y: ry }, inPlace })
+          setOut(fmtJson(r))
+          const nextPath = (r && r.ok && !inPlace && r.output) ? r.output : path
+          if (r && r.ok && nextPath !== path) { store.path = nextPath; setPath(nextPath); props.notify() }
+          if (r && r.ok) {
+            const g2 = await hostCall('edit.geometry', { path: nextPath, maxFeatures: 200 })
+            if (g2 && g2.ok) setGeo(g2)
+          } else mapRef.current = drawEdit2d(cvE, geo, null)
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
+        setBusy(false)
+      }
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         Field('算子', h('select', { className: 'kyg-input', value: op, onChange: e => { setOp(e.target.value); setArgsText(HINTS[e.target.value] || '{}') } },
@@ -483,6 +599,15 @@ window.__ModuleLoader__.load({
           h('input', { className: 'kyg-input', style: { maxWidth: '30%' }, value: attrField, placeholder: '字段名', onChange: e => setAttrField(e.target.value) }),
           h('input', { className: 'kyg-input', value: attrValue, placeholder: '新值（JSON 可解析则按类型写入）', onChange: e => setAttrValue(e.target.value) }),
           h('button', { className: 'kyg-btn', disabled: busy || attrIdx < 0 || !attrField, onClick: applyAttr }, '写入单元格')) : null,
+        h('div', { className: 'kyg-hint' }, '—— 顶点编辑 ——'),
+        h('div', { className: 'kyg-row' },
+          h('button', { className: 'kyg-btn kyg-btn-sub', disabled: busy || !path, onClick: loadGeo }, '加载几何'),
+          geo ? h('span', { className: 'kyg-hint' }, '拖拽顶点方块，松开即写 vertex-move（撤销可回退）') : null),
+        geo ? h('canvas', {
+          ref: setCvE, className: 'kyg-canvas', width: 540, height: 300,
+          style: { cursor: 'crosshair', touchAction: 'none', background: '#fff' },
+          onMouseDown: vDown, onMouseMove: vMove, onMouseUp: vUp, onMouseLeave: vUp,
+        }) : null,
         h(ResultPre, { text: out }),
       )
     }

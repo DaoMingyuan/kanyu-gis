@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（21 个）', rpc.size === 21, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（22 个）', rpc.size === 22, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -192,6 +192,13 @@ async function main() {
   check('services.fetch：离线拉取落盘（FeatureCollection 校验 + 2 要素写出 + 图层名消毒入默认名）',
     fetched.ok && fetched.count === 2 && written === 2,
     'count=' + fetched.count + ' written=' + written);
+  // 顶点编辑数据源（原样几何不抽稀，两种模式皆覆盖；2026-08-18 第十九轮）
+  const egeo = await callRpc('edit.geometry', { path: EXAMPLE, maxFeatures: 200 });
+  const eg0 = egeo.ok && egeo.features && egeo.features[0] && egeo.features[0].geometry;
+  check('edit.geometry：原样几何 + bbox（4 要素无抽稀，顶点下标与文件一致）',
+    egeo.ok && egeo.count === 4 && egeo.total === 4 && Array.isArray(egeo.bbox) && egeo.bbox.length === 4
+      && eg0 && Array.isArray(eg0.coordinates),
+    'count=' + egeo.count + ' bbox=' + JSON.stringify(egeo.bbox));
   // WMS GetMap 地址构造（urlOnly 离线契约路径，两种模式皆覆盖；2026-08-18 第十七轮）
   const wms = await callRpc('services.wms', { url: 'https://example.com/wms?token=1', layer: 'demo:base', bbox: [113.5, 29.5, 114.5, 30.5], width: 800, height: 600, urlOnly: true });
   check('services.wms：buildGetmapUrl 契约（1.3.0 + EPSG:4326 + bbox 六位小数 + 基址补 &）',
@@ -345,6 +352,11 @@ async function main() {
   check('client.js 编辑页签属性单元格编辑区（加载属性表 + applyAttr + 写入单元格）',
     editAttrKeys.every((k) => clientSrc.includes(k)),
     editAttrKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 编辑页签顶点编辑画布（2026-08-18 第十九轮）：edit.geometry + enumVertices + 拖拽写 vertex-move
+  const editVertKeys = ['edit.geometry', 'enumVertices', 'drawEdit2d', '顶点编辑'];
+  check('client.js 编辑页签顶点编辑画布（edit.geometry + enumVertices + drawEdit2d）',
+    editVertKeys.every((k) => clientSrc.includes(k)),
+    editVertKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -385,10 +397,13 @@ async function main() {
   check('pkg/client.js 编辑页签属性单元格编辑区（与动态半同契约）',
     editAttrKeys.every((k) => pkgClientSrc.includes(k)),
     editAttrKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 编辑页签顶点编辑画布（与动态半同契约）',
+    editVertKeys.every((k) => pkgClientSrc.includes(k)),
+    editVertKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 21 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 22 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping
