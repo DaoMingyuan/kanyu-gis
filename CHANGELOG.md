@@ -1,5 +1,15 @@
 # dsh/ 组件变更记录
 
+## [0.4.1] — 2026-08-18
+
+- `tools/test_plugin.mjs` 新增 **pkg 静态双面包契约断言组**（23 → 35 断言全绿）：
+  package.json exports 三键（含 `./package.json` 防 exports 封装拦截的回归锁）+
+  dsh.client 声明；client.js 语法/工厂 id==包名/inject 三服务/两处 slot 注册/
+  preset 门控字面量/无动态沙箱符号调用；**两半漂移锁**——客户端 `hostCall('<m>')`
+  方法名集合 ⊆ host.js RPC 表；index.js inject 含 webServer + apply 实测
+  （mock tools/webServer 注册 8 工具与 /kanyu-gis 前缀路由）+ **RPC 桥端到端实测**
+  （模拟 node:http req/res POST /kanyu-gis/call ping → 200 + ok）。
+
 ## [0.4.0] — 2026-08-18
 
 - **GIS 工作台面板随 preset 联动加载（用户指令「切换到 GIS 模式时面板一并联动加载」）**：

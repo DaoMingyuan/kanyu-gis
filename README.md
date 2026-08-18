@@ -56,7 +56,7 @@ dsh plugin --profile web add "file:<仓库绝对路径>/dsh/pkg"
 
 ```bash
 # 组件测试器：node:vm 等价沙箱加载 plugin/host.js，真实 kanyu CLI 后端，
-# 逐项实证七大能力 + 8 动态工具 + Client 半静态结构（23 项断言）
+# 逐项实证七大能力 + 8 动态工具 + Client 半结构 + pkg 双面包契约（35 项断言）
 node dsh/tools/test_plugin.mjs        # 退出码 0 = 全绿
 
 # preset 可加载性旁路校验（与 DSH 发现库同判定链）

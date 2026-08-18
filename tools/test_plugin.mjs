@@ -17,7 +17,7 @@ import { execFile } from 'node:child_process';
 import { promises as fsp, statSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WORKSPACE = REPO_ROOT; // 等价于 DSH 会话工作区根
@@ -209,6 +209,67 @@ async function main() {
   const tabsOk = ['catalog', 'data', 'map', 'crs', 'gp', 'edit', 'scene3d', 'about']
     .every((t) => clientSrc.includes(`id: '${t}'`));
   check('client.js 七能力页签 + 关于', tabsOk);
+
+  // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
+  const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'pkg', 'package.json'), 'utf8'));
+  check('pkg/package.json：exports 三键（./client + ./package.json 防封装拦截）',
+    pkgJson.exports && pkgJson.exports['.'] === './index.js'
+      && pkgJson.exports['./client'] === './client.js'
+      && pkgJson.exports['./package.json'] === './package.json');
+  check('pkg/package.json：dsh.client 声明 web 平台',
+    pkgJson.dsh && pkgJson.dsh.client && pkgJson.dsh.client.platform === 'web');
+
+  const pkgClientSrc = await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'pkg', 'client.js'), 'utf8');
+  let pkgClientParses = true;
+  try { new vm.Script(pkgClientSrc, { filename: 'pkg/client.js' }); } catch (e) { pkgClientParses = false; }
+  check('pkg/client.js 语法解析（classic script 形态）', pkgClientParses);
+  check('pkg/client.js 工厂 id == 包名（__ModuleLoader__ 校验契约）',
+    pkgClientSrc.includes(`id: '${pkgJson.name}'`), 'id 应等于 ' + pkgJson.name);
+  check('pkg/client.js inject 三服务（slots/sessions/remote）',
+    ['slots', 'sessions', 'remote'].every((s) => pkgClientSrc.includes(`'${s}'`)));
+  const pkgSlotsOk = ['conversation.session.header.actions', 'shell.overlay']
+    .every((s) => pkgClientSrc.includes(s)) && !pkgClientSrc.includes(`name: 'tool.view.cordis'`);
+  check('pkg/client.js 两处 slot 注册且无 tool.view.cordis（动态包专利）', pkgSlotsOk);
+  check('pkg/client.js preset 门控（agentPreset 快照 + kanyu-gis 字面量）',
+    pkgClientSrc.includes('agentPreset') && pkgClientSrc.includes(`'kanyu-gis'`));
+  const dialectClean = !pkgClientSrc.includes('host.call(') && !pkgClientSrc.includes('styles.insert(');
+  check('pkg/client.js 无动态沙箱符号调用（host.call(/styles.insert(）', dialectClean);
+  // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
+  const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
+  const missing = clientMethods.filter((m) => !rpc.has(m));
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 14 RPC）',
+    missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
+
+  // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping
+  const pkgIndexSrc = await fsp.readFile(path.join(REPO_ROOT, 'dsh', 'pkg', 'index.js'), 'utf8');
+  check('pkg/index.js inject 含 webServer（RPC 桥前提）', /inject\s*=\s*\[[^\]]*'webServer'/.test(pkgIndexSrc));
+  let route = null;
+  let staticToolCount = 0;
+  const adapterCtx = {
+    get(key) {
+      if (key === 'tools') return { register() { staticToolCount++ } };
+      if (key === 'webServer') return { register(r) { route = r } };
+      return ctx.get(key); // shell/fs/sandboxPolicy 复用上方等价面
+    },
+  };
+  const pkgMod = await import(pathToFileURL(path.join(REPO_ROOT, 'dsh', 'pkg', 'index.js')).href);
+  pkgMod.apply(adapterCtx, { hostSource: path.join(REPO_ROOT, 'dsh', 'plugin', 'host.js') });
+  check('pkg/index.js apply：8 工具 + /kanyu-gis 前缀路由注册',
+    staticToolCount === 8 && route && route.kind === 'prefix' && route.path === '/kanyu-gis',
+    'tools=' + staticToolCount + ' route=' + (route && route.path));
+  // 模拟一次 POST /kanyu-gis/call {method:'ping'}（node:http req/res 最小等价面）
+  let bridgeCode = 0; let bridgeBody = '';
+  const mockReq = new (await import('node:events')).EventEmitter();
+  mockReq.method = 'POST'; mockReq.url = '/kanyu-gis/call';
+  const mockRes = { writeHead(c) { bridgeCode = c }, end(b) { bridgeBody = b } };
+  await route.handler(mockReq, mockRes);
+  mockReq.emit('data', JSON.stringify({ method: 'ping', args: {} }));
+  mockReq.emit('end');
+  for (let i = 0; i < 300 && !bridgeBody; i++) await new Promise((r) => setTimeout(r, 100)); // ping 走真实 kanyu CLI
+  let bridgeOk = false;
+  try { bridgeOk = bridgeCode === 200 && JSON.parse(bridgeBody).ok === true; } catch { /* 断言兜底 */ }
+  check('pkg/index.js RPC 桥实测：POST /kanyu-gis/call ping → 200 + ok', bridgeOk,
+    'code=' + bridgeCode + ' body=' + bridgeBody.slice(0, 60));
 
   // ---------- 清理 ----------
   await fsp.rm(TMP_DIR, { recursive: true, force: true });
