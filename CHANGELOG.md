@@ -1,5 +1,21 @@
 # dsh/ 组件变更记录
 
+## [0.51.0] — 2026-08-18
+
+- **目录 .kyu 工程图层接力（第五十五轮，目录→地图联动闭环）**：新增
+  `style.list` RPC（30→31）——.kyu layers 全列（id / source 相对工程目录
+  解析为绝对路径 / visible / styleMode / style 原文；fs.resolve 字符串化
+  走 processPath→displayPath→原值三级回退，3080 实测教训入注释）。双端
+  目录页签数据库类 .kyu 条目点击 → 图层清单展开（visible 标注 +
+  styleMode 徽章 + symPrimaryColor 主色色块，对齐壳层 Contents 语义）；
+  图层行点击 → source 设当前图层 + style/kyu/layerId 经 store 接力，
+  地图页签 symRef 快照回填符号化表单 + 写入区工程路径/图层 id
+  （目录→地图→写入工程闭环）。store 扩展 sym/kyu/layerId 三字段。
+- **测试器 +4 断言**（style.list 注册+回退链契约键 + style.list 动态实测
+  （承接 style.set 写入态 + source 绝对化）+ 双端接力契约键）；总计
+  **156/156 全绿**（static 120/120）。3080 生产桥实测：health rpc:31 +
+  demo.kyu 图层清单（source 绝对化命中）。
+
 ## [0.50.0] — 2026-08-18
 
 - **3D 场景符号化着色（第五十四轮，符号化模型打通 3D 管线）**：

@@ -212,10 +212,32 @@ window.__ModuleLoader__.load({
             h('button', { className: 'kyg-btn', style: { marginLeft: 'auto', padding: '1px 8px', fontSize: '11px' }, disabled: svcBusy, onClick: () => fetchLayer(l.name) }, '拉取')))
             : h('div', { className: 'kyg-hint' }, '暂无服务链接——输入基址点「发现图层」'))
       }
+      // .kyu 工程条目（数据库类）点击 → style.list 展开图层清单（第五十五轮）：
+      // 图层行点击 → source 设为当前图层 + 样式/工程路径/图层 id 经 store 接力
+      // 地图页签（symToForm 回填符号化表单）；色块为样式主色
+      const [kyuLayers, setKyuLayers] = React.useState(null)
+      const [kyuMsg, setKyuMsg] = React.useState('')
+      async function loadKyu(it) {
+        setKyuMsg('读取工程 ' + it.name + '…'); setKyuLayers(null)
+        try {
+          const r = await hostCall('style.list', { kyu: it.path })
+          if (r && r.ok) { setKyuLayers({ kyu: it.path, name: r.name, layers: r.layers }); setKyuMsg('工程: ' + (r.name || it.name) + '（' + r.layers.length + ' 图层' + (r.crs ? ' · ' + r.crs : '') + '）') }
+          else setKyuMsg('读取失败: ' + (r && r.error || '未知'))
+        } catch (e) { setKyuMsg('RPC 失败: ' + (e && e.message || e)) }
+      }
+      function pickKyuLayer(l) {
+        store.path = l.source
+        store.sym = l.style
+        store.kyu = kyuLayers.kyu
+        store.layerId = l.id
+        props.notify()
+      }
       function catRows(cat) {
         const pick = (it, ext, text, clickable) => ({ key: it.path || text, ext, text,
           size: it.size, onClick: clickable ? () => { store.path = it.path; props.notify() } : undefined })
-        if (cat.name === '数据库') return (data.dbItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
+        if (cat.name === '数据库') return (data.dbItems || []).map(it => (/\.kyu$/i.test(it.path || it.name)
+          ? { key: it.path || it.name, ext: 'KYU', text: it.name, size: it.size, onClick: () => loadKyu(it) }
+          : pick(it, it.ext.toUpperCase(), it.name, true)))
         if (cat.name === '本机数据') return (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
         if (cat.name === '地图框') return (data.mapItems || []).map(it => ({ key: it.path || it.name, ext: 'PNG', text: it.name, size: it.size,
           onClick: () => previewMapImage(it) }))
@@ -250,6 +272,14 @@ window.__ModuleLoader__.load({
           store.path ? h('span', { className: 'kyg-sel' }, '当前图层: ' + store.path) : null),
         h('div', { className: 'kyg-hint' }, msg),
         data && data.categories && data.categories.map(catSection),
+        kyuMsg ? h('div', { className: 'kyg-hint' }, kyuMsg) : null,
+        // .kyu 工程图层清单展开（style.list；点击载入当前图层 + 样式接力地图页签）
+        kyuLayers ? h('div', null,
+          kyuLayers.layers.map((l, i) => h('div', { key: i, className: 'kyg-list-item', onClick: () => pickKyuLayer(l) },
+            h('span', { className: 'ext' }, l.visible ? '图层' : '隐藏'),
+            h('span', null, l.id + (l.styleMode ? ' · ' + l.styleMode : '')),
+            symPrimaryColor(l.style) ? h('span', { style: { display: 'inline-block', width: '10px', height: '10px', marginLeft: '6px', borderRadius: '2px', background: symPrimaryColor(l.style) } }) : null)),
+          h('div', { className: 'kyg-hint' }, '点击图层行：载入为当前图层，样式接力地图页签符号化表单')) : null,
         layMsg ? h('div', { className: 'kyg-hint' }, layMsg) : null,
         laySvg ? h('button', { className: 'kyg-btn', onClick: () => { setLaySvg(null); setLayMsg('') } }, '关闭布局预览') : null,
         // SVG 排版产物内嵌预览（host 侧 render.layout 出图，壳层 layoutview 同源排版器）
@@ -371,6 +401,14 @@ window.__ModuleLoader__.load({
       if (!colors.length) return { error: '类别色须为「类别:#RRGGBB,…」格式' }
       return { mode: 'categorical', field: f, colors, other: hexToRgb(otherColor) || [136, 136, 136] }
     }
+    // 样式主色（一层一色取色，对齐壳层 symbology.rs primary_color 语义）
+    function symPrimaryColor(sym) {
+      if (!sym || typeof sym !== 'object') return null
+      if (sym.mode === 'single') return rgbToHex(sym.color)
+      if (sym.mode === 'categorical') return sym.colors && sym.colors.length ? rgbToHex(sym.colors[0][1]) : rgbToHex(sym.other)
+      if (sym.mode === 'graduated') return ({ Jade: '#2d6a5e', Amber: '#b07818', Slate: '#3a6b8c' })[sym.ramp] || '#2d6a5e'
+      return null
+    }
     // 工程样式读回 → 表单回填（style.get 回执 LayerSymbology → 控件态）
     function symToForm(sym) {
       if (!sym || typeof sym !== 'object') return null
@@ -398,6 +436,22 @@ window.__ModuleLoader__.load({
       const [msg, setMsg] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
+      // 目录 .kyu 图层接力（第五十五轮）：store.sym 快照回填符号化表单 +
+      // 工程路径/图层 id 回填写入区（闭环：目录→地图→写入工程）
+      const symRef = React.useRef(null)
+      React.useEffect(() => {
+        if (!store.sym || store.sym === symRef.current) return
+        symRef.current = store.sym
+        const f = symToForm(store.sym)
+        if (f) {
+          setSymMethod(f.method); setSymField(f.field || ''); setSymSpec(f.spec || '')
+          if (f.singleColor) setSingleColor(f.singleColor)
+          if (f.otherColor) setOtherColor(f.otherColor)
+          if (f.ramp) setRamp(f.ramp)
+        }
+        if (store.kyu) setKyuPath(store.kyu)
+        if (store.layerId) setLayerId(store.layerId)
+      }, [store.sym, store.kyu, store.layerId, store.path])
       async function render2d(p) {
         const usePath = p || path
         const sym = buildSymbology(symMethod, symField, symSpec, singleColor, otherColor, ramp)
@@ -1207,7 +1261,7 @@ window.__ModuleLoader__.load({
       ctx.effect(() => () => { styleEl.remove() }, 'kanyu-gis: styles')
 
       // ------ 包级共享状态（头部按钮 ↔ 浮层窗口） ------
-      const store = { open: false, path: '', rev: 0 }
+      const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '' }
       const listeners = new Set()
       function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
       function useStore() {

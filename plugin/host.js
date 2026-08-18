@@ -388,6 +388,30 @@ return {
       return { ok: true, kyu, layerId: lay.id, style }
     }
 
+    // 工程图层清单（style.list RPC，第五十五轮）：.kyu layers 全列——id /
+    // source（相对工程目录解析为绝对路径，供客户端直接设为当前图层）/
+    // visible / styleMode / style 原文。目录页签 .kyu 条目点击展开用。
+    async function styleList(kyu) {
+      if (!kyu) return { ok: false, error: '缺 kyu 工程路径' }
+      let m, kyuAbs
+      try {
+        // fs.resolve 返回 {displayPath} 对象：readText 直接吃该对象（styleGet
+        // 同款）；取字符串走 processPath → displayPath → 原值三级回退
+        // （3080 实测 processPath 对 resolve 对象可能取不出，2026-08-18）
+        const resolved = await fs.resolve(await procPath(kyu))
+        m = JSON.parse(await fs.readText(resolved))
+        kyuAbs = (fs.processPath && fs.processPath(resolved)) || resolved.displayPath || String(resolved)
+      } catch (e) { return { ok: false, error: 'kyu 工程读取/解析失败: ' + String(e && e.message || e) } }
+      const base = kyuAbs.replace(/[\\/][^\\/]+$/, '')
+      const layers = (m.layers || []).map(l => {
+        const src = String(l.source || '')
+        const abs = /^([A-Za-z]:[\\/]|\/|\\\\)/.test(src) ? src : (base + '/' + src.replace(/\\/g, '/'))
+        return { id: l.id, source: abs, visible: l.visible !== false,
+          styleMode: l.style && l.style.mode ? String(l.style.mode) : null, style: l.style || null }
+      })
+      return { ok: true, kyu, name: m.name || null, crs: m.crs || null, layers }
+    }
+
     // 布局排版（kanyu render layout，第四十六轮出口）：A4 横/竖页面 +
     // 标题/图例/比例尺/指北针，SVG 或 PNG。样式文件同 renderMap 走 --style-file。
     async function renderLayout(path, out, title, page, dpi, flags, style, symbology) {
@@ -1038,6 +1062,7 @@ return {
     harness.handle('catalog.readImage', async (a) => readImagePng(a && a.path))
     harness.handle('style.get', async (a) => styleGet(a && a.kyu, a && a.layerId))
     harness.handle('style.set', async (a) => styleSet(a && a.kyu, a && a.layerId, a && a.style))
+    harness.handle('style.list', async (a) => styleList(a && a.kyu))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))

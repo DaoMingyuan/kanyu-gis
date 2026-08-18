@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（30 个）', rpc.size === 30, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（31 个）', rpc.size === 31, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -165,6 +165,10 @@ async function main() {
   check('host.js style.get/style.set 注册（.kyu LayerSymbology 读写 + 图层 id 匹配）',
     hostSrc.includes("harness.handle('style.get'") && hostSrc.includes("harness.handle('style.set'")
       && hostSrc.includes('async function styleGet') && hostSrc.includes('async function styleSet'));
+  // 工程图层清单（2026-08-18 第五十五轮）：style.list RPC + source 相对工程目录解析
+  check('host.js style.list 注册（layers 全列 + source 绝对路径解析 + styleMode 摘要 + fs.resolve 三级回退）',
+    hostSrc.includes("harness.handle('style.list'") && /async function styleList[\s\S]*?styleMode/.test(hostSrc)
+      && /async function styleList[\s\S]*?resolved\.displayPath/.test(hostSrc));
   // toolbox.run 同款防护（2026-08-18 第二十八轮）：tool run --output 单产出同路径写出
   check('host.js toolboxRun 落盘前 ensureOutDir（tool run --output 同款防护）',
     /async function toolboxRun[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
@@ -422,6 +426,14 @@ async function main() {
     const setBad = await callRpc('style.set', { kyu: kyuTmp, layerId: 'l1', style: { mode: 'bogus' } });
     check('style.set 非法 mode 拒绝（中文报错指引 LayerSymbology 三模式）',
       setBad && !setBad.ok && /single\/categorical\/graduated/.test(String(setBad.error)), String(setBad && setBad.error).slice(0, 60));
+    // 工程图层清单（2026-08-18 第五十五轮）：style.list 全列 + source 相对
+    // 工程目录解析为绝对路径 + styleMode 摘要（承接上文 style.set 写入态）
+    const listR = await callRpc('style.list', { kyu: kyuTmp });
+    const l1 = listR && listR.layers && listR.layers[0];
+    check('style.list：图层清单（id + source 绝对化 + styleMode 承接 style.set 写入）',
+      listR && listR.ok && l1 && l1.id === 'l1' && l1.styleMode === 'categorical'
+        && path.isAbsolute(l1.source) && l1.style && l1.style.field === 'usage',
+      l1 ? l1.id + ' ' + l1.source + ' ' + l1.styleMode : JSON.stringify(listR).slice(0, 100));
     // 布局排版分支（2026-08-18 第四十六轮）：kanyu_render(layout) 走 render layout CLI 出 SVG
     const tRender = tools.get('kanyu_render');
     const layOut = path.join(TMP_DIR, 'kanyu-layout.svg');
@@ -703,6 +715,12 @@ async function main() {
   check('client.js 地图页签工程样式读写区（style.get/style.set + 读取/写入按钮）',
     symKyuKeys.every((k) => clientSrc.includes(k)),
     symKyuKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 目录 .kyu 图层接力（2026-08-18 第五十五轮）：style.list 展开 + pickKyuLayer
+  // 设当前图层 + symPrimaryColor 色块 + store.sym 接力地图页签 symRef 回填
+  const kyuLinkKeys = ['style.list', 'pickKyuLayer', 'symPrimaryColor', 'symRef', 'store.sym'];
+  check('client.js 目录 .kyu 图层接力地图页签（style.list + pickKyuLayer + symRef 回填）',
+    kyuLinkKeys.every((k) => clientSrc.includes(k)),
+    kyuLinkKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 目录页签五分类（2026-08-18 第十四/二十轮）：分类头 + 数据库/本机数据/地图框/布局框分离
   const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '本机数据'];
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
@@ -820,6 +838,9 @@ async function main() {
   check('pkg/client.js 地图页签工程样式读写区（与动态半同契约）',
     symKyuKeys.every((k) => pkgClientSrc.includes(k)),
     symKyuKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 目录 .kyu 图层接力地图页签（与动态半同契约）',
+    kyuLinkKeys.every((k) => pkgClientSrc.includes(k)),
+    kyuLinkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 目录页签五分类区（与动态半同契约）',
     catKeys.every((k) => pkgClientSrc.includes(k)),
     catKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
@@ -871,7 +892,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 30 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 31 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
   // 两半 RPC 面对称一致（2026-08-18 第四十二轮盘点）：动态半 host.call 与静态半
   // hostCall 方法集互无独有（比单向 ⊆ 更强的漂移锁；三元撤/重做不受 matchAll 捕获，两半同构对称）
