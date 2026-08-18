@@ -735,6 +735,24 @@ window.__ModuleLoader__.load({
     // → 高度向上抬升；背面剔除 + 质心纵深排序（远先绘）+ 侧面两档明暗（0.55/0.75）；
     // 高度归一化 = 画布高 × 0.25 / 最大高度（内核 MAX_HEIGHT_FRAC）；左键拖拽旋转
     // （yaw += dx*0.01；pitch ∓ 0.3°/px，钳制 30°–45°；默认 yaw=-0.5、pitch=35°）。
+    // 类别色：字符串哈希 → HSL 稳定取色（同类别恒同色；壳层 symbology 唯一值
+    // 语义的 3D 轻量投影），返回 [r,g,b]
+    function catColor(cat) {
+      let n = 0
+      const s = String(cat)
+      for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0
+      const hue = (n % 360) / 360, sat = 0.52, lit = 0.58
+      const q2 = lit < 0.5 ? lit * (1 + sat) : lit + sat - lit * sat
+      const p2 = 2 * lit - q2
+      const conv = t => {
+        let tt = t < 0 ? t + 1 : t > 1 ? t - 1 : t
+        if (tt < 1 / 6) return p2 + (q2 - p2) * 6 * tt
+        if (tt < 1 / 2) return q2
+        if (tt < 2 / 3) return p2 + (q2 - p2) * (2 / 3 - tt) * 6
+        return p2
+      }
+      return [Math.round(conv(hue + 1 / 3) * 255), Math.round(conv(hue) * 255), Math.round(conv(hue - 1 / 3) * 255)]
+    }
     function drawScene3d(cv, data, view) {
       const g = cv.getContext('2d')
       const W = cv.width, H = cv.height
@@ -774,8 +792,8 @@ window.__ModuleLoader__.load({
         return dy * sY + (-dx) * cY < 0
       }
       const BASE = [216, 120, 86] // 组件基色（无图层符号化通道，取堪舆暖色）
-      const shade = (k, a) => 'rgba(' + Math.round(BASE[0] * k) + ',' + Math.round(BASE[1] * k) + ',' + Math.round(BASE[2] * k) + ',' + a + ')'
-      // 装配：棱柱（顶面 + 已剔除侧面 + 明暗档）/ 贴地线 / 贴地点
+      const shade = (base, k, a) => 'rgba(' + Math.round(base[0] * k) + ',' + Math.round(base[1] * k) + ',' + Math.round(base[2] * k) + ',' + a + ')'
+      // 装配：棱柱（顶面 + 已剔除侧面 + 明暗档，类别色按 f.cat 稳定取色）/ 贴地线 / 贴地点
       const prisms = [], gLines = [], gPoints = []
       for (const f of data.features) {
         const ring = f.ring
@@ -783,6 +801,7 @@ window.__ModuleLoader__.load({
         if (f.geom === 'Point') { gPoints.push(proj(ring[0][0], ring[0][1], 0)); continue }
         if (f.geom === 'LineString') { gLines.push(ring.map(p => proj(p[0], p[1], 0))); continue }
         if (ring.length < 3) continue
+        const fbase = f.cat != null ? catColor(f.cat) : BASE
         const ground = ring.map(p => toCanvas(p[0], p[1]))
         const top = ring.map(p => proj(p[0], p[1], f.height))
         const sides = []
@@ -795,23 +814,24 @@ window.__ModuleLoader__.load({
         }
         let mx = 0, my = 0
         ground.forEach(p => { mx += p[0]; my += p[1] })
-        prisms.push({ depth: rotate(mx / ground.length, my / ground.length)[1], top, sides })
+        prisms.push({ depth: rotate(mx / ground.length, my / ground.length)[1], top, sides, base: fbase })
       }
       prisms.sort((p1, p2) => p2.depth - p1.depth) // 质心纵深：远 → 近
       const fillPoly = pts => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill() }
       for (const pr of prisms) {
-        for (const s of pr.sides) { g.fillStyle = shade(s.dark ? 0.55 : 0.75, 0.92); fillPoly(s.q) }
+        for (const s of pr.sides) { g.fillStyle = shade(pr.base, s.dark ? 0.55 : 0.75, 0.92); fillPoly(s.q) }
         if (pr.top.length >= 3) {
-          g.fillStyle = shade(1, 0.95); g.strokeStyle = 'rgba(60,40,36,.7)'; g.lineWidth = 0.6
+          g.fillStyle = shade(pr.base, 1, 0.95); g.strokeStyle = 'rgba(60,40,36,.7)'; g.lineWidth = 0.6
           fillPoly(pr.top); g.stroke()
         }
       }
-      g.strokeStyle = shade(0.85, 0.9); g.lineWidth = 1.5
+      g.strokeStyle = shade(BASE, 0.85, 0.9); g.lineWidth = 1.5
       for (const ln of gLines) { g.beginPath(); ln.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke() }
-      g.fillStyle = shade(0.85, 0.95)
+      g.fillStyle = shade(BASE, 0.85, 0.95)
       for (const p of gPoints) { g.beginPath(); g.arc(p[0], p[1], 3, 0, 6.2832); g.fill() }
       g.fillStyle = '#6b7489'; g.font = '11px sans-serif'
       g.fillText('堪舆 3D · ' + data.count + ' 要素 · 高度字段 ' + data.heightField +
+        (data.colorField ? ' · 着色 ' + data.colorField + '（' + (data.categories || []).length + ' 类）' : '') +
         ' · 方位角 ' + Math.round(yaw * 180 / Math.PI) + '° 俯仰 ' + Math.round(pitchDeg) + '° · 拖拽旋转', 10, 16)
     }
 
@@ -819,6 +839,7 @@ window.__ModuleLoader__.load({
       const store = props.store
       const [path, setPath] = React.useState(store.path)
       const [hf, setHf] = React.useState('height')
+      const [cf, setCf] = React.useState('')
       const [data, setData] = React.useState(null)
       const [msg, setMsg] = React.useState('')
       const [busy, setBusy] = React.useState(false)
@@ -841,7 +862,7 @@ window.__ModuleLoader__.load({
       async function load() {
         setBusy(true); setMsg('制备场景数据中…')
         try {
-          const r = await hostCall('scene3d.data', { path, heightField: hf, maxFeatures: 300 })
+          const r = await hostCall('scene3d.data', { path, heightField: hf, maxFeatures: 300, colorField: cf || undefined })
           if (r && r.ok) { setData(r); setMsg(r.count + '/' + r.total + ' 要素 · bbox ' + fmtJson(r.bbox, 200)) }
           else setMsg('失败: ' + (r && r.error || '未知'))
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
@@ -850,6 +871,7 @@ window.__ModuleLoader__.load({
       return h('div', null,
         Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
         Field('高度字段', h('input', { className: 'kyg-input', value: hf, onChange: e => setHf(e.target.value) })),
+        Field('着色字段', h('input', { className: 'kyg-input', value: cf, onChange: e => setCf(e.target.value), placeholder: '可选：分类着色（如 usage）；留空单色基色' })),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: load }, '加载 3D 场景')),
         h('div', { className: 'kyg-hint' }, msg),
@@ -858,6 +880,11 @@ window.__ModuleLoader__.load({
           style: { cursor: 'grab', touchAction: 'none' },
           onMouseDown: onDown, onMouseMove: onMove, onMouseUp: onUp, onMouseLeave: onUp,
         }),
+        // 类别图例（catColor 与画布同函数，色块与棱柱同色）
+        data && data.categories ? h('div', { className: 'kyg-row', style: { flexWrap: 'wrap' } },
+          data.categories.map(c => h('span', { key: c, className: 'kyg-hint', style: { marginRight: '10px' } },
+            h('span', { style: { display: 'inline-block', width: '10px', height: '10px', marginRight: '4px', borderRadius: '2px', background: 'rgb(' + catColor(c).join(',') + ')' } }),
+            c))) : null,
       )
     }
 

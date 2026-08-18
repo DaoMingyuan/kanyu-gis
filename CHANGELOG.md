@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.22.0] — 2026-08-18
+
+- **3D 域深化：挤出体分类着色（壳层 symbology 唯一值语义的 3D 轻量投影）**：
+  `scene3d.data` RPC 加 `colorField` 参数——逐要素带 `cat` 类别值、响应带
+  `categories` 去重清单（上限 12 类，超出归「其他」）；无 colorField 时
+  `categories: null`（契约不漂移）。`kanyu_scene3d` 工具加 colorField 可选
+  参数，摘要带类别清单。
+- **双客户端 3D 页签**：`catColor` 字符串哈希 → HSL 稳定取色（同类别恒
+  同色），棱柱顶面/侧面明暗档改按类别色着色（贴地线/点保持基色）；Tab3d
+  加「着色字段」输入 + 画布下方类别图例（色块与棱柱同函数同色）；状态行
+  带类别数。RPC 表不变仍 25（scene3d.data 参数扩展）。
+- **测试器 +2 断言**（usage 两类 + 逐要素 cat / 无 colorField 契约）；s3dKeys
+  契约键补 catColor/colorField/categories 双端锁；总计 **74/74 全绿**
+  （static 59/59）。3080 桥实测 categories=['office','residential'] 正确。
+
 ## [0.21.0] — 2026-08-18
 
 - **GIS 模式 AI 面整合：`kanyu_geoprocess` 加注册表分支**：动态工具执行双轨

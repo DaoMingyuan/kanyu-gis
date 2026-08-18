@@ -353,6 +353,16 @@ async function main() {
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
   check('scene3d.data：bbox + 高度提取', s3d.ok && Array.isArray(s3d.bbox) && s3d.count >= 3,
     `count=${s3d.count}/${s3d.total}`);
+  // 分类着色（2026-08-18 第二十五轮）：colorField 逐要素带 cat + categories 去重清单
+  const s3dCat = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height', colorField: 'usage' });
+  check('scene3d.data 分类着色：usage 两类（office/residential）+ 逐要素 cat',
+    s3dCat.ok && s3dCat.colorField === 'usage'
+      && s3dCat.categories.includes('office') && s3dCat.categories.includes('residential')
+      && s3dCat.features.filter(f => f.cat).length >= 3,
+    JSON.stringify(s3dCat.categories));
+  const s3dNoCat = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });
+  check('scene3d.data 无 colorField：categories 为 null（契约不漂移）',
+    s3dNoCat.ok && s3dNoCat.categories === null && s3dNoCat.colorField === null);
 
   // ⑧ 动态工具抽查（Harness function-calling 面，CLI 依赖）
   if (!STATIC_ONLY) {
@@ -389,7 +399,7 @@ async function main() {
   check('client.js 七能力页签 + 关于', tabsOk);
   // 3D 管线对齐内核 scene3d.rs 软件管线（2026-08-18 第十轮）：
   // yaw/pitch 视角态、faceVisible 背面剔除、高度归一化 H×0.25、拖拽旋转交互
-  const s3dKeys = ['yaw', 'pitch', 'faceVisible', 'H * 0.25', 'onMouseDown'];
+  const s3dKeys = ['yaw', 'pitch', 'faceVisible', 'H * 0.25', 'onMouseDown', 'catColor', 'colorField', 'categories'];
   check('client.js 3D 管线对齐内核 scene3d.rs（yaw/pitch/背面剔除/高度归一化 0.25/拖拽旋转）',
     s3dKeys.every((k) => clientSrc.includes(k)),
     s3dKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');

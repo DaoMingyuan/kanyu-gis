@@ -582,7 +582,7 @@ return {
     }
 
     // ------ 能力 7：3D 地理（挤出体数据制备，Client canvas 软件 3D 管线绘制） ------
-    async function scene3dData(path, heightField, maxFeatures) {
+    async function scene3dData(path, heightField, maxFeatures, colorField) {
       if (!fs) return { ok: false, error: 'fs service 不可用' }
       const p = await procPath(path)
       let text
@@ -624,15 +624,36 @@ return {
         if (pts.length === 0) continue
         const props = f.properties || {}
         const h = Number(props[hf])
-        out.push({
+        const feat = {
           ring: pts,
           geom: g.type,
           height: isFinite(h) ? h : 10,
           name: props.name || props.Name || props.NAME || null,
-        })
+        }
+        // 分类着色（壳层 symbology 唯一值语义的 3D 轻量投影）：colorField 给
+        // 字段名时逐要素带类别值，响应带去重 categories 清单（上限 12 类，
+        // 超出归入「其他」），配色由 Client 按类别哈希 HSL 取色。
+        if (colorField) {
+          const cv = props[colorField]
+          if (cv !== undefined && cv !== null) feat.cat = String(cv)
+        }
+        out.push(feat)
+      }
+      let categories = null
+      if (colorField) {
+        const seen = []
+        for (const f of out) {
+          if (f.cat === undefined) continue
+          if (!seen.includes(f.cat)) {
+            if (seen.length >= 12) { f.cat = '其他' } else seen.push(f.cat)
+          }
+        }
+        if (seen.length >= 12 && !seen.includes('其他')) seen.push('其他')
+        categories = seen
       }
       return {
         ok: true, source: p, heightField: hf,
+        colorField: colorField || null, categories,
         count: out.length, total: feats.length,
         bbox: isFinite(minX) ? [minX, minY, maxX, maxY] : null,
         features: out,
@@ -817,7 +838,7 @@ return {
         undoTop: h.undo.length ? h.undo[h.undo.length - 1].label : null,
         redoTop: h.redo.length ? h.redo[h.redo.length - 1].label : null }
     })
-    harness.handle('scene3d.data', async (a) => scene3dData(a && a.path, a && a.heightField, a && a.maxFeatures))
+    harness.handle('scene3d.data', async (a) => scene3dData(a && a.path, a && a.heightField, a && a.maxFeatures, a && a.colorField))
 
     // ---------- 动态模型工具（堪舆 AI 能力 → Harness function-calling） ----------
     // 原壳层 LocalDriver 意图匹配/OpenAiDriver function calling 的能力面，
@@ -1008,11 +1029,13 @@ return {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         heightField: { type: 'string', description: '高度字段名（默认 height，无该字段取 10）' },
         maxFeatures: { type: 'number', description: '最大要素数（默认 300）' },
+        colorField: { type: 'string', description: '分类着色字段（可选；逐要素带类别值 + 响应带 categories 清单，上限 12 类，Client 3D 视图按类别着色）' },
       },
       async execute(args) {
-        const r = await scene3dData(args.path, args.heightField, args.maxFeatures)
+        const r = await scene3dData(args.path, args.heightField, args.maxFeatures, args.colorField)
         if (!r.ok) return '3D 数据制备失败: ' + r.error
         return '3D 场景: ' + r.count + '/' + r.total + ' 要素，高度字段 ' + r.heightField + '，bbox=' + JSON.stringify(r.bbox)
+          + (r.categories ? '，着色字段 ' + r.colorField + '（' + r.categories.length + ' 类: ' + r.categories.join('/') + '）' : '')
       },
     })
 
