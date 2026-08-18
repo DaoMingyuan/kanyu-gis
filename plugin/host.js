@@ -311,6 +311,31 @@ return {
       }
     }
 
+    // 布局排版（kanyu render layout，第四十六轮出口）：A4 横/竖页面 +
+    // 标题/图例/比例尺/指北针，SVG 或 PNG。样式文件同 renderMap 走 --style-file。
+    async function renderLayout(path, out, title, page, dpi, flags, style) {
+      await ensureOutDir()
+      const p = await procPath(path)
+      const target = out || (OUT_DIR + '\\kanyu-layout-' + Date.now() + '.svg')
+      const args = ['render', 'layout', '--out', q(await procPath(target)),
+        '--title', q(String(title || '堪舆布局')),
+        '--page', page === 'a4p' ? 'a4p' : 'a4l',
+        '--dpi', String(dpi || 96)]
+      const fl = flags || {}
+      if (fl.noLegend) args.push('--no-legend')
+      if (fl.noScalebar) args.push('--no-scalebar')
+      if (fl.noNorth) args.push('--no-north')
+      if (fl.theme) args.push('--theme', fl.theme === 'dark' ? 'dark' : 'light')
+      if (style && typeof style === 'object') {
+        const sf = OUT_DIR + '\\kanyu-style-' + Date.now() + '.json'
+        await fs.writeText(await fs.resolve(sf), JSON.stringify(style))
+        args.push('--style-file', q(sf))
+      }
+      args.push(q(p))
+      const r = await runKanyu(args, 180000)
+      return { run: r, out: target }
+    }
+
     // ------ 能力 3：坐标框架 ------
     async function crsReproject(path, from, to, output) {
       const p = await procPath(path)
@@ -967,15 +992,26 @@ return {
 
     textTool({
       name: 'kanyu_render',
-      description: '离屏渲染 GIS 数据为地图 PNG（晨山 light/夜观星 dark 主题，支持属性驱动符号化）。返回图片落盘路径，可用 read_image 查看。',
+      description: '离屏渲染 GIS 数据为地图 PNG（晨山 light/夜观星 dark 主题，支持属性驱动符号化）；layout=true 时走布局排版（A4 页面 + 标题/图例/比例尺/指北针，SVG 或 PNG）。返回图片落盘路径，可用 read_image 查看。',
       parameters: {
         path: { type: 'string', required: true, description: '数据文件路径' },
         theme: { type: 'string', description: 'light（晨山）| dark（夜观星），默认 light' },
-        width: { type: 'number', description: '宽度像素（默认 800）' },
-        height: { type: 'number', description: '高度像素（默认 600）' },
+        width: { type: 'number', description: '宽度像素（默认 800，layout 模式忽略）' },
+        height: { type: 'number', description: '高度像素（默认 600，layout 模式忽略）' },
         style: { type: 'object', description: '属性驱动符号化（StyleRule）：分级 {"type":"graduated","field":"height","stops":[[阈值,"#RRGGBB"],…]（严格升序）}；唯一值 {"type":"categorical","field":"usage","colors":{"类别":"#RRGGBB"},"default":"#888888"}' },
+        layout: { type: 'boolean', description: 'true 走布局排版（kanyu render layout）：A4 页面 + 标题/图例/比例尺/指北针' },
+        title: { type: 'string', description: 'layout 模式标题（默认「堪舆布局」）' },
+        page: { type: 'string', description: 'layout 页面：a4l（横，默认）| a4p（竖）' },
+        dpi: { type: 'number', description: 'layout PNG 分辨率（默认 96；输出 .png 时生效）' },
+        out: { type: 'string', description: 'layout 输出路径（可选；.svg/.png 按扩展名，缺省落 dsh/output/*.svg）' },
       },
       async execute(args) {
+        if (args.layout) {
+          const r = await renderLayout(args.path, args.out, args.title, args.page, args.dpi,
+            { noLegend: args.noLegend, noScalebar: args.noScalebar, noNorth: args.noNorth, theme: args.theme }, args.style)
+          if (!r.run.ok) return '排版失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
+          return '排版完成: ' + r.out + '（可 read_image 查看）'
+        }
         const r = await renderMap(args.path, args.theme, args.width, args.height, args.style)
         if (!r.run.ok) return '渲染失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
         return '渲染完成: ' + r.out + (r.pngBase64 ? '（PNG ' + Math.round(r.pngBase64.length * 3 / 4 / 1024) + 'KB，可 read_image 查看）' : '（图片读取失败）')

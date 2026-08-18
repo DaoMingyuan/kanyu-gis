@@ -184,6 +184,9 @@ async function main() {
   // kanyu_scene3d 高度范围回执（2026-08-18 第三十七轮）：heightRange 增量字段 + 交互视图接力
   check('host.js kanyu_scene3d 回执含高度范围 + 3D 页签接力指引',
     hostSrc.includes('heightRange') && hostSrc.includes('高度范围') && hostSrc.includes('工作台 3D 页签'));
+  // kanyu_render layout 布局排版（2026-08-18 第四十六轮）：renderLayout 助手契约键
+  check('host.js kanyu_render layout 契约键（renderLayout + ensureOutDir 防护 + 排版完成回执）',
+    /async function renderLayout[\s\S]*?ensureOutDir\(\)/.test(hostSrc) && hostSrc.includes('排版完成: '));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -363,6 +366,16 @@ async function main() {
     });
     check('render.map 符号化：非升序 stops 内核校验拒绝', renderBad.run && !renderBad.run.ok && /升序/.test(String(renderBad.run.stderr)),
       renderBad.run ? 'exit=' + renderBad.run.exitCode : '无 run');
+    // 布局排版分支（2026-08-18 第四十六轮）：kanyu_render(layout) 走 render layout CLI 出 SVG
+    const tRender = tools.get('kanyu_render');
+    const layOut = path.join(TMP_DIR, 'kanyu-layout.svg');
+    const layText = tRender && await tRender.execute({ path: EXAMPLE, layout: true, title: '示例布局', out: layOut });
+    let laySvg = '';
+    try { laySvg = await fsp.readFile(layOut, 'utf8'); } catch { /* 读取失败即空串 */ }
+    check('动态工具 kanyu_render(layout)：SVG 排版出图（标题/图例入画 + 落盘一致）',
+      typeof layText === 'string' && /排版完成: /.test(layText)
+        && laySvg.includes('<svg') && laySvg.includes('示例布局'),
+      String(layText).slice(0, 100) + ' svg=' + laySvg.length);
   }
 
   // ④ 坐标框架（能力 3）

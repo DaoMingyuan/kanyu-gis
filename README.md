@@ -35,7 +35,7 @@
 
 | 能力 | 组件工具 | kanyu 侧对应物 |
 |------|----------|----------------|
-| 地图面板 | `kanyu_render` | `kanyu render map`（晨山/夜观星，PNG/SVG）+ 符号化控件（graduated/categorical 直通 --style）+ 联动重渲染（store.rev 内容版本号，编辑/撤销后已渲染视图自动跟随） |
+| 地图面板 | `kanyu_render` | `kanyu render map`（晨山/夜观星，PNG/SVG）+ 符号化控件（graduated/categorical 直通 --style）+ 联动重渲染（store.rev 内容版本号，编辑/撤销后已渲染视图自动跟随）+ 布局排版（`layout` 分支走 `kanyu render layout`：A4 页面 + 标题/图例/比例尺/指北针） |
 | GIS 数据目录读取 | `kanyu_catalog` / `kanyu_data` | 五分类工程目录（壳层 catalog.rs 范式：地图框=渲染产物 / 布局框=.kyu layouts / 数据库=.kdb/.kyu / 服务链接=WFS+WMS / 本机数据）+ `kanyu data info（含 extent 范围摘要）/query/validate` + 字段计算器（`data calc`/kanyu_data action=calc：attrcalc 内核表达式求值写入目标字段，落盘确认回执）+ `data.preview` 属性表（纯 fs）+ 查询联动（过滤落盘 dsh/output + 命中 N/M 计数 + 设为当前图层 + 结果集自动载入属性表；模型侧 query+output 同语义回执）+ 服务链接分支（discover 附拉取指引 / fetch 附接力提示 / wms 附 bbox 宽高直通+urlOnly，xml/data 离线直通）+ 格式注册表 |
 | 坐标框架 | `kanyu_crs` | `kanyu crs search/info`（EPSG 全库 7507 条检索/检视）+ `kanyu data reproject`（投影变换落盘 dsh/output + 设为当前图层联动；模型侧 reproject+output 计数回执） |
 | 工程目录 | Client 目录页签 | `catalog.list` RPC（扩展名矩阵对齐 `format.rs`）+ freshness 自动重扫（清单外新当前图层触发） |

@@ -1,5 +1,21 @@
 # dsh/ 组件变更记录
 
+## [0.43.0] — 2026-08-18
+
+- **布局排版出口（壳层 layoutview 移植，第四十六轮）**：主仓新增
+  `kanyu render layout <file> --out <path>`（`RenderCommand::Layout` →
+  kanyu-render `layout` 排版器：A4 横/竖页面 + 标题/图例/比例尺/指北针
+  内嵌地图渲染，`--page/--dpi/--no-legend/--no-scalebar/--no-north/--theme/
+  --style[-file]` 全参数面；比例尺按 extent 跨度 ×111320 赤道近似 +
+  `nice_scale` 取整；graduated 图例行「≤ 阈值」、categorical 类别排序）。
+  此前排版器只有壳层 layoutview 一个消费者，CLI/组件无出口。组件侧
+  `kanyu_render` 动态工具新增 `layout` 分支（renderLayout 助手 +
+  ensureOutDir 落盘防护 + `--style-file` 样式直通 + 「排版完成: out
+  （可 read_image 查看）」回执；`title/page/dpi/out` 可选参数）。
+  RPC 表不变（26 项；布局预览 UI 页签为下轮候选）。
+- **测试器 +2 断言**（renderLayout 静态契约键 + 动态工具 layout 出 SVG
+  含标题实测）；总计 **125/125 全绿**（static 97/97）。
+
 ## [0.42.0] — 2026-08-18
 
 - **中文路径根因复核（推翻第四十四轮「shell 桥 GBK 乱码」初判）**：逐项隔离
