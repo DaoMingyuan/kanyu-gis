@@ -202,6 +202,10 @@ async function main() {
   check('host.js attributes-replace 算子契约键（EDIT_OPS 入列 + 自逆操作 + UpdateProperties 移植）',
     hostSrc.includes("'attributes-replace'") && hostSrc.includes('UpdateProperties')
       && hostSrc.includes('属性已整行替换'));
+  // 线打断算子（2026-08-18 第五十九轮）：line-split 对齐 kanyu-edit split_line_at_point
+  check('host.js line-split 算子契约键（EDIT_OPS 入列 + line-unsplit 逆操作 + split_line_at_point 移植）',
+    hostSrc.includes("'line-split'") && hostSrc.includes("'line-unsplit'")
+      && hostSrc.includes('打断仅支持 LineString') && hostSrc.includes('吸附段首顶点'));
   // kanyu_catalog 服务链接回执指引（2026-08-18 第三十四轮）：discover 用法指引 + fetch 接力提示 + xml/data 离线直通
   check('host.js kanyu_catalog 服务链接回执（discover 拉取指引 + fetch 接力提示 + xml/data 参数）',
     hostSrc.includes('拉取图层：本工具 url + layer=') && hostSrc.includes('接力检视/渲染/编辑')
@@ -569,7 +573,7 @@ async function main() {
 
   // ⑥ 地理编辑（能力 6）
   const ops = await callRpc('edit.ops');
-  check('edit.ops：9 算子（+attributes-replace）', ops.ok && ops.ops.length === 9 && ops.ops.includes('hole-add') && ops.ops.includes('attributes-replace'));
+  check('edit.ops：10 算子（+line-split）', ops.ok && ops.ops.length === 10 && ops.ops.includes('attributes-replace') && ops.ops.includes('line-split'));
   const cnt = await callRpc('edit.apply', { path: EXAMPLE, op: 'feature-count' });
   check('edit.apply feature-count = 4', cnt.ok && cnt.count === 4);
   const edited = await callRpc('edit.apply', { path: EXAMPLE, op: 'attribute-set', args: { field: 'dsh_test', value: 1 } });
@@ -677,6 +681,30 @@ async function main() {
     arBack = p0.name === '示例大厦A' && p0.height === 88.5; // 自逆操作恢复旧属性
   } catch { /* 断言兜底 */ }
   check('attributes-replace undo：自逆操作恢复旧属性行', arUndo.ok && arBack, arUndo.summary || arUndo.error);
+
+  // ⑥++++++ 线打断（2026-08-18 第五十九轮）：line-split 对齐 kanyu-edit split_line_at_point（split.rs:109）
+  const spSrc = path.join(TMP_DIR, 'line-split-test.geojson');
+  await fsp.writeFile(spSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[0, 0], [10, 0], [10, 10]] }, properties: { road: '甲' } },
+  ] }));
+  const spRel = path.relative(REPO_ROOT, spSrc);
+  const sp1 = await callRpc('edit.apply', { path: spRel, op: 'line-split', args: { index: 0, x: 5, y: 1 } });
+  let spOk = false;
+  try {
+    const fs2 = JSON.parse(await fsp.readFile(sp1.output, 'utf8')).features;
+    spOk = fs2.length === 2 && fs2[0].geometry.coordinates.join(',') === '0,0,5,0'
+      && fs2[1].geometry.coordinates.join(',') === '5,0,10,0,10,10' && fs2[1].properties.road === '甲';
+  } catch { /* 断言兜底 */ }
+  check('edit.apply line-split：投影打断（[0,0]→[5,0] 首段 / 次段插入 + 属性复制）', sp1.ok && spOk, sp1.summary || sp1.error);
+  const spUndo = await callRpc('edit.undo', { path: spRel });
+  let spBack = false;
+  try {
+    const fs3 = JSON.parse(await fsp.readFile(spUndo.output, 'utf8')).features;
+    spBack = fs3.length === 1 && fs3[0].geometry.coordinates.join(',') === '0,0,10,0,10,10';
+  } catch { /* 断言兜底 */ }
+  check('line-split undo：line-unsplit 恢复原几何 + 删次段', spUndo.ok && spBack, spUndo.summary || spUndo.error);
+  const spBad = await callRpc('edit.apply', { path: spRel, op: 'line-split', args: { index: 0, x: 0, y: 0 } });
+  check('line-split 校验：打断点位于线端点中文报错', !spBad.ok && /线端点/.test(spBad.error || ''), spBad.error || '');
 
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });

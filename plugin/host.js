@@ -59,7 +59,7 @@ const GP_TOOLS = [
 
 // 地理编辑算子（组件内 GeoJSON 编辑内核，自我迭代起点；
 // 深度拓扑编辑由 kanyu-edit crate 承接，本组件覆盖轻量在线编辑）
-const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add']
+const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'attributes-replace', 'vertex-move', 'feature-move', 'hole-add', 'line-split']
 
 // ---------- 工具函数 ----------
 
@@ -612,7 +612,7 @@ return {
     }
     // 单一变更入口：正/逆向共用。返回 { ok, error?, summary?, inverse? }，
     // inverse 为结构化逆操作（{ op, args }），仅变更算子产生。
-    // feature-insert / attribute-restore / hole-remove 为逆操作内部算子，不进 EDIT_OPS 公开清单。
+    // feature-insert / attribute-restore / hole-remove / line-unsplit 为逆操作内部算子，不进 EDIT_OPS 公开清单。
     // —— AddHole 挖洞校验移植（kanyu-edit ops.rs:330-436 语义 JS 化）——
     // 点-环关系：'in'/'out'/'on'（射线法 + 边界检测，容差 1e-12）
     function pointRingRel(p, ring) {
@@ -739,6 +739,61 @@ return {
         const n = f.properties ? Object.keys(f.properties).length : 0
         return { ok: true, summary: '要素 #' + i + ' 属性已整行替换（' + n + ' 字段）',
           inverse: { op: 'attributes-replace', args: { index: i, properties: old } } }
+      } else if (op === 'line-split') {
+        // 线在指定点打断为两条（对齐 kanyu-edit split_line_at_point，split.rs:109）：
+        // 仅 LineString；点投影到最近线段（t 截断 [0,1]，1e-9 内吸附既有顶点），
+        // 首段就地改 + 次段插入其后（属性随行复制）；投影落于端点报中文错误。
+        // 面切割 split_polygon_by_line 依赖 geo Buffer/BooleanOps（无忠实 JS 等价），
+        // 经评估留内核侧，组件不移植。
+        const i = Number(a.index)
+        const f = feats[i]
+        if (!f) return { ok: false, error: 'index 越界: ' + a.index }
+        const g = f.geometry
+        if (!g || g.type !== 'LineString') {
+          return { ok: false, error: g && g.type === 'MultiLineString' ? 'MultiLineString 请先「炸开多部件」再打断' : '打断仅支持 LineString 线要素' }
+        }
+        const coords = g.coordinates
+        if (!Array.isArray(coords) || coords.length < 2) return { ok: false, error: '线要素不足 2 个顶点，无法打断' }
+        const px = Number(a.x), py = Number(a.y)
+        if (!isFinite(px) || !isFinite(py)) return { ok: false, error: 'line-split 需要数值 x/y（打断点）' }
+        let best = null // { d2, si, t, proj }
+        for (let si = 0; si < coords.length - 1; si++) {
+          const ax = coords[si][0], ay = coords[si][1], bx = coords[si + 1][0], by = coords[si + 1][1]
+          const ddx = bx - ax, ddy = by - ay, len2 = ddx * ddx + ddy * ddy
+          if (len2 < 1e-24) continue // 退化段跳过
+          let t = ((px - ax) * ddx + (py - ay) * ddy) / len2
+          t = Math.max(0, Math.min(1, t))
+          const proj = [ax + ddx * t, ay + ddy * t]
+          const d2 = (px - proj[0]) * (px - proj[0]) + (py - proj[1]) * (py - proj[1])
+          if (!best || d2 < best.d2) best = { d2, si, t, proj }
+        }
+        if (!best) return { ok: false, error: '线要素无有效线段' }
+        const { si, t, proj } = best
+        let first, second
+        if (t < 1e-9 || (Math.abs(proj[0] - coords[si][0]) < 1e-9 && Math.abs(proj[1] - coords[si][1]) < 1e-9)) {
+          first = coords.slice(0, si + 1); second = coords.slice(si) // 吸附段首顶点
+        } else if (t > 1 - 1e-9) {
+          first = coords.slice(0, si + 2); second = coords.slice(si + 1) // 吸附段尾顶点
+        } else {
+          first = coords.slice(0, si + 1).concat([proj])
+          second = [proj].concat(coords.slice(si + 1))
+        }
+        if (first.length < 2 || second.length < 2) return { ok: false, error: '打断点位于线端点（段长不足 2 点）' }
+        const oldGeom = g
+        f.geometry = { type: 'LineString', coordinates: first }
+        feats.splice(i + 1, 0, { type: 'Feature',
+          geometry: { type: 'LineString', coordinates: second },
+          properties: f.properties ? JSON.parse(JSON.stringify(f.properties)) : {} })
+        return { ok: true, summary: '线打断为两段（#' + i + ' 首段 ' + first.length + ' 点 + 次段 ' + second.length + ' 点）',
+          inverse: { op: 'line-unsplit', args: { index: i, geometry: oldGeom } } }
+      } else if (op === 'line-unsplit') {
+        // line-split 逆操作内部算子：恢复原几何 + 删除紧随其后的次段
+        // （其自身逆操作不被使用——redo 重放的是 line-split 原记录）
+        const i = Number(a.index)
+        if (!feats[i]) return { ok: false, error: 'index 越界: ' + a.index }
+        feats[i].geometry = a.geometry
+        feats.splice(i + 1, 1)
+        return { ok: true, summary: '线两段已合并回 #' + i }
       } else if (op === 'hole-add') {
         // 面内挖洞（对齐 kanyu-edit AddHole，ops.rs:383）：index + part（Polygon 恒 0，
         // MultiPolygon 为子面下标）+ ring（未闭合自动闭合）；apply 先经 holeValidate
@@ -1433,11 +1488,11 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/hole-add；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/attributes-replace/vertex-move/hole-add/line-split；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；attributes-replace 整行属性替换（对齐 kanyu-edit UpdateProperties：properties 整体覆写，null 清空属性表，自逆操作）；line-split 线按点打断（对齐 kanyu-edit split_line_at_point：投影最近线段 + 1e-9 吸附顶点，首段就地改+次段插入、属性复制；面切割依赖内核 geo BooleanOps，组件不移植）；hole-add 面内挖洞（对齐 kanyu-edit AddHole：ring 未闭合自动闭合，洞环须完全位于面内且不与外环/既有洞边界相接，part 单面恒 0）；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },
-        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"properties":{"name":"改"}}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
+        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}、{"index":0,"properties":{"name":"改"}}、{"index":0,"x":2.5,"y":4}、{"index":0,"ring":[[2,2],[4,2],[4,4],[2,4]]}）' },
         inPlace: { type: 'boolean', description: 'true 原地覆盖（默认 false 写 .edited.geojson）' },
       },
       async execute(args) {

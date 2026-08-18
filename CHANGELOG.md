@@ -1,5 +1,20 @@
 # dsh/ 组件变更记录
 
+## [0.55.0] — 2026-08-18
+
+- **线打断移植（第五十九轮，kanyu-edit split_line_at_point → 组件）**：
+  EDIT_OPS 9→10 新增 `line-split`（对齐 split.rs:109）——仅 LineString；
+  打断点投影最近线段（t 截断 [0,1]，1e-9 内吸附既有顶点），首段就地改 +
+  次段插入其后（属性深拷贝随行复制）；投影落于线端点中文报错。逆操作
+  内部算子 `line-unsplit`（恢复原几何 + 删次段；其自身逆操作不被使用——
+  redo 重放的是 line-split 原记录）。
+- **面切割评估结论**：`split_polygon_by_line` 依赖 geo Buffer/BooleanOps
+  （微量缓冲 + 差集 + 碎条剔除），无忠实 JS 等价物，组件不移植、留内核侧
+  （未来可经 WASM 技能或 CLI 出口接入）；评估结论已入 GIS_MODE §4。
+- 测试器 169→**173**（+3 动态：投影打断闭环、undo 合并回原样、端点拒绝；
+  edit.ops 9→10）+ static 133→**137**（+1 契约键）；3080 生产桥
+  打断/撤销闭环实测通过。
+
 ## [0.54.0] — 2026-08-18
 
 - **整行属性替换移植（第五十八轮，kanyu-edit UpdateProperties → 组件）**：
