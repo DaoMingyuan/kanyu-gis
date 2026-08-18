@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.65.0] — 2026-08-19
+
+- **叠加分析 WASM 技能（第六十九轮，技能沙箱第三算子）**：新 guest crate
+  `dsh/skills/overlay_ops/`（技能模板 + geo 0.33 `BooleanOps`——
+  `intersect` 基准面 × 叠加面两两配对交集（基准属性继承）/ `union`
+  两图层合并整体 / `difference` 基准面减叠加整体，仅面要素、空结果与
+  非法算子中文报错），产出 `dsh/skills/overlay_ops.wasm`（394KB 入仓）；
+  第二图层经 `_role` 注入约定传递——host.js `skillRun` 增 `input2` 通道
+  （读第二文件逐要素标 `_role="overlay"` 注入滚动临时输入，与 cut/param
+  并轨），`skill.run` RPC 与 `kanyu_skill` 模型工具参数面同步加 `input2`。
+- 测试器 199→**203** / static 156（+4 功能实测：intersect 属性继承 /
+  union 合并单要素 / 缺 _op 中文报错 / 缺 input2 中文报错，均入
+  STATIC_ONLY 门控块）。
+
 ## [0.64.0] — 2026-08-19
 
 - **缓冲区 WASM 技能（第六十八轮，技能沙箱第二算子）**：新 guest crate

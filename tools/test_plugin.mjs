@@ -819,6 +819,38 @@ async function main() {
   check('动态工具 kanyu_skill：缓冲区回执含产出清单（3 要素 → path，可接力）',
     typeof bfText === 'string' && /技能 .* 完成/.test(bfText) && /产出: 3 要素 → /.test(bfText) && /接力/.test(bfText),
     String(bfText).slice(0, 160));
+
+  // ⑥+++++++++++ 叠加分析 WASM 技能（2026-08-19 第六十九轮）：overlay_ops guest（geo BooleanOps）+ input2 注入通道
+  const ovlSrc = path.join(TMP_DIR, 'overlay-base.geojson');
+  await fsp.writeFile(ovlSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] }, properties: { name: '基准A' } },
+  ] }));
+  const ovl2Src = path.join(TMP_DIR, 'overlay-second.geojson');
+  await fsp.writeFile(ovl2Src, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[5, 5], [15, 5], [15, 15], [5, 15], [5, 5]]] }, properties: { tag: '叠加B' } },
+  ] }));
+  const ovlRel = path.relative(REPO_ROOT, ovlSrc);
+  const ovl2Rel = path.relative(REPO_ROOT, ovl2Src);
+  const ovlOut = path.join(TMP_DIR, 'overlay-out.geojson');
+  const ov1 = await callRpc('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: ovlRel, input2: ovl2Rel, output: path.relative(REPO_ROOT, ovlOut), param: { _op: 'intersect' } });
+  let ovOk = false;
+  try {
+    const fs11 = JSON.parse(await fsp.readFile(ovlOut, 'utf8')).features;
+    ovOk = fs11.length === 1 && fs11[0].properties.name === '基准A' && fs11[0].geometry.type === 'Polygon';
+  } catch { /* 断言兜底 */ }
+  check('skill.run 叠加分析：input2 注入 _role=overlay + overlay_ops.wasm intersect（基准属性继承）', ov1.ok && ovOk, String(ov1.stderr || ov1.error || '').slice(0, 120));
+  const ovUnionOut = path.join(TMP_DIR, 'overlay-union.geojson');
+  const ovUnion = await callRpc('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: ovlRel, input2: ovl2Rel, output: path.relative(REPO_ROOT, ovUnionOut), param: { _op: 'union' } });
+  let ovUnionOk = false;
+  try {
+    const fs12 = JSON.parse(await fsp.readFile(ovUnionOut, 'utf8')).features;
+    ovUnionOk = fs12.length === 1 && fs12[0].geometry.type === 'Polygon';
+  } catch { /* 断言兜底 */ }
+  check('skill.run 叠加分析：union 两图层合并为单要素', ovUnion.ok && ovUnionOk, String(ovUnion.stderr || '').slice(0, 120));
+  const ovNoOp = await callRpc('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: ovlRel, input2: ovl2Rel });
+  check('skill.run 叠加校验：缺 param._op 中文报错（guest 契约）', !ovNoOp.ok && /未找到叠加参数/.test(ovNoOp.stderr || ''), String(ovNoOp.stderr || '').slice(0, 120));
+  const ovNoL2 = await callRpc('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: ovlRel, param: { _op: 'difference' } });
+  check('skill.run 叠加校验：缺 input2 中文报错（无叠加面要素）', !ovNoL2.ok && /无叠加面要素/.test(ovNoL2.stderr || ''), String(ovNoL2.stderr || '').slice(0, 120));
   }
 
   // ⑦ 3D 地理（能力 7）

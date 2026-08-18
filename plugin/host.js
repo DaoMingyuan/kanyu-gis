@@ -600,7 +600,7 @@ return {
     // ------ 能力 5c：WASM 技能通道（2026-08-18 第六十六轮，`kanyu skill run` CLI 出口） ------
     // 面切割等内核 geo BooleanOps 类算子以 WASM 组件技能承载（dsh/skills/*.wasm，
     // 单一事实源 guest 源码在同名目录）；skill/input 限工作区内路径（同其他文件算子）
-    async function skillRun(skill, input, output, cutLine, param) {
+    async function skillRun(skill, input, output, cutLine, param, input2) {
       if (!skill) return { ok: false, error: '缺少技能路径（dsh/skills/*.wasm）' }
       if (!input) return { ok: false, error: '缺少输入数据路径' }
       // 捆绑技能解析：'dsh/skills/x.wasm' 相对形在静态形态优先插件自带目录
@@ -612,8 +612,10 @@ return {
       }
       let inputPath = input
       // 技能注入要素（_role 契约）：cut 切割线（split_polygons）/ param 参数要素
-      // （buffer_zones 的 _distance 等键值）——走滚动临时输入（原数据不动；
-      // 固定名自我覆盖不淤积——桌面单用户语义，与编辑画布单会话一致）
+      // （buffer_zones 的 _distance、overlay_ops 的 _op 等键值）/ overlay 第二图层
+      // 要素（overlay_ops 叠加层——host 从 input2 文件读入并逐要素标 _role="overlay"）
+      // ——走滚动临时输入（原数据不动；固定名自我覆盖不淤积——桌面单用户语义，
+      // 与编辑画布单会话一致）
       const injects = []
       if (Array.isArray(cutLine)) {
         if (cutLine.length < 2) return { ok: false, error: '切割线至少需要 2 个顶点' }
@@ -622,6 +624,17 @@ return {
       }
       if (param && typeof param === 'object' && !Array.isArray(param)) {
         injects.push({ type: 'Feature', geometry: null, properties: { ...param, _role: 'param' } })
+      }
+      if (typeof input2 === 'string' && input2) {
+        const rd2 = await editReadFc(await procPath(input2))
+        if (rd2.error) return { ok: false, error: '第二图层读取失败: ' + rd2.error }
+        for (const f of rd2.fc.features || []) {
+          injects.push({ type: 'Feature', geometry: f.geometry || null,
+            properties: { ...(f.properties || {}), _role: 'overlay' } })
+        }
+        if (!injects.some((f) => f.properties && f.properties._role === 'overlay')) {
+          return { ok: false, error: '第二图层无要素（input2）' }
+        }
       }
       if (injects.length) {
         const rd = await editReadFc(await procPath(input))
@@ -1351,7 +1364,7 @@ return {
     harness.handle('geoprocess.list', async () => ({ ok: true, tools: GP_TOOLS }))
     harness.handle('toolbox.list', async () => toolboxList())
     harness.handle('toolbox.run', async (a) => toolboxRun(a && a.id, a && a.params, a && a.output))
-    harness.handle('skill.run', async (a) => skillRun(a && a.skill, a && a.input, a && a.output, a && a.cutLine, a && a.param))
+    harness.handle('skill.run', async (a) => skillRun(a && a.skill, a && a.input, a && a.output, a && a.cutLine, a && a.param, a && a.input2))
     harness.handle('geoprocess.run', async (a) => geoprocessRun(a && a.tool, a && a.input, a && a.input2, a && a.output, a && a.params))
     harness.handle('edit.ops', async () => ({ ok: true, ops: EDIT_OPS }))
     harness.handle('edit.geometry', async (a) => editGeometry(a && a.path, a && a.maxFeatures))
@@ -1583,16 +1596,17 @@ return {
 
     textTool({
       name: 'kanyu_skill',
-      description: 'WASM 技能沙箱（总规 §4.5「以 WASM 为技能」，kanyu skill run 出口）：内置 split_polygons 面切割——cutLine 切割线横贯面要素劈分（geo Buffer+BooleanOps 差集，属性继承 + _part 序号；切割线须横贯目标面，原数据不动、产出新图层）、buffer_zones 缓冲区——param {_distance} 按距离膨胀点/线/面为面（geo Buffer round join，属性继承 + _distance/_part；距离须为正地图单位）；技能为 wasmtime 沙箱 WASM 组件（无 IO、fuel 配额），单一事实源 guest 源码在 dsh/skills/。',
+      description: 'WASM 技能沙箱（总规 §4.5「以 WASM 为技能」，kanyu skill run 出口）：内置 split_polygons 面切割——cutLine 切割线横贯面要素劈分（geo Buffer+BooleanOps 差集，属性继承 + _part 序号；切割线须横贯目标面，原数据不动、产出新图层）、buffer_zones 缓冲区——param {_distance} 按距离膨胀点/线/面为面（geo Buffer round join，属性继承 + _distance/_part；距离须为正地图单位）、overlay_ops 叠加分析——param {_op: intersect/union/difference} + input2 第二图层（geo BooleanOps：相交两两配对基准属性继承 / 合并整体 / 差集基准减叠加，仅面要素）；技能为 wasmtime 沙箱 WASM 组件（无 IO、fuel 配额），单一事实源 guest 源码在 dsh/skills/。',
       parameters: {
-        skill: { type: 'string', required: true, description: '技能路径（内置：dsh/skills/split_polygons.wasm / dsh/skills/buffer_zones.wasm）' },
-        input: { type: 'string', required: true, description: '输入图层路径（FeatureCollection GeoJSON）' },
+        skill: { type: 'string', required: true, description: '技能路径（内置：dsh/skills/split_polygons.wasm / dsh/skills/buffer_zones.wasm / dsh/skills/overlay_ops.wasm）' },
+        input: { type: 'string', required: true, description: '输入图层路径（FeatureCollection GeoJSON；overlay_ops 为基准层）' },
         output: { type: 'string', description: '输出路径（可选，缺省落 dsh/output/）' },
         cutLine: { type: 'array', description: '切割线坐标 [[x,y],...]（split_polygons 必填，≥2 点，注入 _role=cut 走临时输入）' },
-        param: { type: 'object', additionalProperties: true, description: '技能参数键值（buffer_zones 必填 {"_distance": 数值}——缓冲距离，地图单位、> 0；注入 _role=param 参数要素走临时输入）' },
+        param: { type: 'object', additionalProperties: true, description: '技能参数键值（buffer_zones 必填 {"_distance": 数值}——缓冲距离，地图单位、> 0；overlay_ops 必填 {"_op": "intersect/union/difference"}；注入 _role=param 参数要素走临时输入）' },
+        input2: { type: 'string', description: '第二图层路径（overlay_ops 必填，叠加层——要素注入 _role=overlay 走临时输入）' },
       },
       async execute(args) {
-        const r = await skillRun(args.skill, args.input, args.output, args.cutLine, args.param)
+        const r = await skillRun(args.skill, args.input, args.output, args.cutLine, args.param, args.input2)
         const writes = r.ok ? [...String(r.stderr || '').matchAll(/已写出 (\d+) 个要素 → (.+)/g)] : []
         const head = r.ok ? '技能 ' + args.skill + ' 完成' : '技能 ' + args.skill + ' 失败(exit ' + r.exitCode + ')'
         return head
