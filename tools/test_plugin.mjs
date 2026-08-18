@@ -187,6 +187,13 @@ async function main() {
   // kanyu_edit 撤销栈回执（2026-08-18 第三十三轮）：history 不再被文本工具丢弃
   check('host.js kanyu_edit 回执含撤销栈深度（history 不再被丢弃）',
     hostSrc.includes('撤销栈') && hostSrc.includes('r.history'));
+  // 编辑算子补齐（2026-08-18 第五十六轮）：feature-move 算子契约键
+  check('host.js feature-move 算子契约键（EDIT_OPS 入列 + translateCoords 递归平移 + 负量逆操作）',
+    hostSrc.includes("'feature-move'") && hostSrc.includes('translateCoords') && hostSrc.includes('dx: -dx, dy: -dy'));
+  // vertex-move 修复（2026-08-18 第五十六轮）：ringPath 缺省按几何类型分派 + Z/M 保留 + undo 容量对齐内核 100
+  check('host.js vertex-move 修复（ringPath 类型分派 + Z/M 保留）+ EDIT_HISTORY_CAP 100',
+    hostSrc.includes('ringPath 缺省按几何类型分派') && hostSrc.includes('.concat(oldPos.slice(2))')
+      && hostSrc.includes('EDIT_HISTORY_CAP = 100'));
   // kanyu_catalog 服务链接回执指引（2026-08-18 第三十四轮）：discover 用法指引 + fetch 接力提示 + xml/data 离线直通
   check('host.js kanyu_catalog 服务链接回执（discover 拉取指引 + fetch 接力提示 + xml/data 参数）',
     hostSrc.includes('拉取图层：本工具 url + layer=') && hostSrc.includes('接力检视/渲染/编辑')
@@ -554,7 +561,7 @@ async function main() {
 
   // ⑥ 地理编辑（能力 6）
   const ops = await callRpc('edit.ops');
-  check('edit.ops：6 算子', ops.ok && ops.ops.length === 6);
+  check('edit.ops：7 算子（+feature-move）', ops.ok && ops.ops.length === 7 && ops.ops.includes('feature-move'));
   const cnt = await callRpc('edit.apply', { path: EXAMPLE, op: 'feature-count' });
   check('edit.apply feature-count = 4', cnt.ok && cnt.count === 4);
   const edited = await callRpc('edit.apply', { path: EXAMPLE, op: 'attribute-set', args: { field: 'dsh_test', value: 1 } });
@@ -598,6 +605,34 @@ async function main() {
     String(erText).slice(0, 160));
   const erOut = erSrc.replace(/\.geojson$/, '.edited.geojson');
   if (existsSync(erOut)) await fsp.unlink(erOut); // 清理临时产物
+
+  // ⑥+++ 编辑算子补齐（2026-08-18 第五十六轮）：feature-move 平移闭环 + ringPath 缺省分派 + Z/M 保留
+  const mvSrc = path.join(TMP_DIR, 'feature-move-test.geojson');
+  await fsp.copyFile(path.join(REPO_ROOT, EXAMPLE), mvSrc);
+  const mvRel = path.relative(REPO_ROOT, mvSrc);
+  const mvBefore = JSON.parse(await fsp.readFile(mvSrc, 'utf8')).features[0].geometry.coordinates[0];
+  const mv1 = await callRpc('edit.apply', { path: mvRel, op: 'feature-move', args: { index: 0, dx: 1000, dy: 2000 } });
+  let mvOk = false;
+  try { mvOk = JSON.parse(await fsp.readFile(mv1.output, 'utf8')).features[0].geometry.coordinates[0] === mvBefore + 1000; } catch { /* 断言兜底 */ }
+  check('edit.apply feature-move：整要素平移（Point x+1000 生效）', mv1.ok && mvOk, mv1.summary || mv1.error);
+  const mvUndo = await callRpc('edit.undo', { path: mvRel });
+  let mvBack = false;
+  try { mvBack = Math.abs(JSON.parse(await fsp.readFile(mvUndo.output, 'utf8')).features[0].geometry.coordinates[0] - mvBefore) < 1e-9; } catch { /* 断言兜底 */ }
+  check('feature-move undo：负量逆操作回原位（浮点容差 1e-9）', mvUndo.ok && mvBack, mvUndo.summary || mvUndo.error);
+  const lsSrc = path.join(TMP_DIR, 'vm-line-test.geojson');
+  await fsp.writeFile(lsSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[1, 2], [3, 4], [5, 6]] }, properties: {} },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [9, 8, 7] }, properties: {} },
+  ] }));
+  const lsRel = path.relative(REPO_ROOT, lsSrc);
+  const vLine = await callRpc('edit.apply', { path: lsRel, op: 'vertex-move', args: { feature: 0, vertex: 1, x: 30, y: 40 } });
+  let lineOk = false;
+  try { lineOk = JSON.parse(await fsp.readFile(vLine.output, 'utf8')).features[0].geometry.coordinates[1].join(',') === '30,40'; } catch { /* 断言兜底 */ }
+  check('vertex-move LineString 缺省 ringPath：不再错误下钻（修复实测）', vLine.ok && lineOk, vLine.summary || vLine.error);
+  const vPt = await callRpc('edit.apply', { path: lsRel, op: 'vertex-move', args: { feature: 1, x: 90, y: 80 } });
+  let ptOk = false;
+  try { ptOk = JSON.parse(await fsp.readFile(vPt.output, 'utf8')).features[1].geometry.coordinates.join(',') === '90,80,7'; } catch { /* 断言兜底 */ }
+  check('vertex-move Point 特判 + Z 保留（[9,8,7]→[90,80,7]）', vPt.ok && ptOk, vPt.summary || vPt.error);
 
   // ⑦ 3D 地理（能力 7）
   const s3d = await callRpc('scene3d.data', { path: EXAMPLE, heightField: 'height' });

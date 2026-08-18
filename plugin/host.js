@@ -59,7 +59,7 @@ const GP_TOOLS = [
 
 // 地理编辑算子（组件内 GeoJSON 编辑内核，自我迭代起点；
 // 深度拓扑编辑由 kanyu-edit crate 承接，本组件覆盖轻量在线编辑）
-const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'vertex-move']
+const EDIT_OPS = ['feature-count', 'feature-delete', 'feature-add', 'attribute-set', 'attribute-delete', 'vertex-move', 'feature-move']
 
 // ---------- 工具函数 ----------
 
@@ -600,9 +600,10 @@ return {
     // ------ 能力 6：地理编辑（GeoJSON 在线编辑内核） ------
     // 对齐 kanyu-edit 内核范式（crates/kanyu-edit/src/history.rs）：命令逆操作
     // 双栈——每个变更算子在应用时同步计算结构化逆操作，按源文件键控入 undo 栈
-    // （容量 64、溢出淘汰最旧、新变更清空 redo 栈）；edit.undo/edit.redo 在两栈
+    // （容量 100——对齐 kanyu-edit History 默认（history.rs:32）、溢出淘汰最旧、
+    // 新变更清空 redo 栈）；edit.undo/edit.redo 在两栈
     // 间移动记录并对同一输出文件回写。feature-count 为只读算子，不入栈。
-    const EDIT_HISTORY_CAP = 64
+    const EDIT_HISTORY_CAP = 100
     const editHistory = new Map() // 源文件路径 -> { undo: [], redo: [] }（记录含 outPath）
     function historyOf(p) {
       let h = editHistory.get(p)
@@ -674,21 +675,51 @@ return {
             const f = feats[i]
             return [i, !!(f && f.properties && a.field in f.properties), f && f.properties ? f.properties[a.field] : undefined]
           }) } } }
+      } else if (op === 'feature-move') {
+        // 整要素平移（对齐 kanyu-edit MoveFeature {index,dx,dy}，ops.rs:166）
+        const i = Number(a.index)
+        const f = feats[i]
+        if (!f) return { ok: false, error: 'index 越界: ' + a.index }
+        const dx = Number(a.dx), dy = Number(a.dy)
+        if (!isFinite(dx) || !isFinite(dy)) return { ok: false, error: 'feature-move 需要数值 dx/dy' }
+        // 递归平移任意维度坐标嵌套（Point 至 MultiPolygon 通吃），仅动 x/y、保留 Z/M
+        const translateCoords = (c) => {
+          if (!Array.isArray(c)) return
+          if (typeof c[0] === 'number') { c[0] += dx; c[1] += dy; return }
+          for (const cc of c) translateCoords(cc)
+        }
+        translateCoords(f.geometry && f.geometry.coordinates)
+        return { ok: true, summary: '要素 #' + i + ' 已平移 (' + dx + ', ' + dy + ')',
+          inverse: { op: 'feature-move', args: { index: i, dx: -dx, dy: -dy } } }
       } else if (op === 'vertex-move') {
         const i = Number(a.feature)
         const f = feats[i]
         if (!f) return { ok: false, error: 'feature 越界: ' + a.feature }
-        // ringPath：Polygon 为 [环号]，MultiPolygon 为 [部件号, 环号]（GeomPath 三级定位）
+        const gtype = f.geometry && f.geometry.type
+        // ringPath 缺省按几何类型分派（修复：旧版恒 [0]，对 LineString/Point 会错误下钻
+        // 进首顶点数组）：Polygon→[0]，MultiPolygon/MultiLineString→[0,0]，
+        // Point/LineString/MultiPoint→[]（GeomPath 三级定位）
+        const ringPath = Array.isArray(a.ringPath) ? a.ringPath
+          : gtype === 'Polygon' ? [0]
+          : (gtype === 'MultiPolygon' || gtype === 'MultiLineString') ? [0, 0] : []
         let coords = f.geometry && f.geometry.coordinates
-        const ringPath = Array.isArray(a.ringPath) ? a.ringPath : [0]
         for (const ri of ringPath) {
           if (!Array.isArray(coords)) return { ok: false, error: '几何路径解析失败' }
           coords = coords[Number(ri)]
         }
         const vi = Number(a.vertex)
+        if (gtype === 'Point' && ringPath.length === 0) {
+          // Point 的 coordinates 本身就是 position，无 vertex 下标层
+          if (!Array.isArray(coords) || typeof coords[0] !== 'number') return { ok: false, error: 'Point 几何坐标异常' }
+          const oldPos = coords.slice()
+          f.geometry.coordinates = [Number(a.x), Number(a.y)].concat(oldPos.slice(2))
+          return { ok: true, summary: '要素 #' + i + '（Point）已移至 (' + a.x + ', ' + a.y + ')',
+            inverse: { op: 'vertex-move', args: { feature: i, ringPath, vertex: 0, x: oldPos[0], y: oldPos[1] } } }
+        }
         if (!Array.isArray(coords) || !Array.isArray(coords[vi])) return { ok: false, error: 'vertex 越界: ' + a.vertex }
         const oldPos = coords[vi].slice()
-        coords[vi] = [Number(a.x), Number(a.y)]
+        // 保留 Z/M：仅覆写 x/y（修复：旧版恒写二维，三维顶点高程被丢弃）
+        coords[vi] = [Number(a.x), Number(a.y)].concat(oldPos.slice(2))
         return { ok: true, summary: '要素 #' + i + ' 顶点 ' + vi + ' 已移至 (' + a.x + ', ' + a.y + ')',
           inverse: { op: 'vertex-move', args: { feature: i, ringPath, vertex: vi, x: oldPos[0], y: oldPos[1] } } }
       }
@@ -1300,11 +1331,11 @@ return {
 
     textTool({
       name: 'kanyu_edit',
-      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/attribute-set/attribute-delete/vertex-move；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
+      description: '地理编辑（GeoJSON 在线编辑内核，对齐 kanyu-edit 命令逆操作双栈）：feature-count/feature-delete/feature-add/feature-move/attribute-set/attribute-delete/vertex-move；vertex-move 的 ringPath 缺省按几何类型分派（面[0]/多面与多线[0,0]/线与点[]，Point 无需 vertex 下标），仅覆写 x/y、保留 Z/M；默认写出 .edited.geojson，inPlace=true 原地修改；变更入 undo 栈，撤销/重做经 edit.undo/edit.redo RPC（工作台编辑页签有按钮）；回执附撤销/重做栈深度，可据此提示模型侧回滚步数。',
       parameters: {
         path: { type: 'string', required: true, description: 'GeoJSON 文件路径' },
         op: { type: 'string', required: true, description: '编辑算子：' + EDIT_OPS.join('/') },
-        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}）' },
+        args: { type: 'object', additionalProperties: true, description: '算子参数（如 {"index":0}、{"index":0,"dx":100,"dy":50}、{"field":"height","value":30}、{"feature":0,"ringPath":[0],"vertex":2,"x":113.5,"y":34.2}）' },
         inPlace: { type: 'boolean', description: 'true 原地覆盖（默认 false 写 .edited.geojson）' },
       },
       async execute(args) {

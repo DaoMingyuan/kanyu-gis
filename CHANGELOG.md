@@ -1,5 +1,24 @@
 # dsh/ 组件变更记录
 
+## [0.52.0] — 2026-08-18
+
+- **编辑算子对照盘点补齐（第五十六轮，组件 EDIT_OPS ↔ kanyu-edit 全量比对）**：
+  新增 `feature-move` 整要素平移算子（对齐 kanyu-edit `MoveFeature {index,dx,dy}`，
+  ops.rs:166）——`translateCoords` 递归平移任意维度坐标嵌套（Point 至
+  MultiPolygon 通吃），仅动 x/y、保留 Z/M，负量逆操作入 undo 栈。EDIT_OPS
+  6→7（RPC 计数不变，仍 31）。
+- **vertex-move 两个 bug 级修复**：① ringPath 缺省旧版恒 `[0]`，对
+  LineString/Point 会错误下钻进首顶点数组——现按几何类型分派（面 `[0]`/
+  多面与多线 `[0,0]`/线与点 `[]`），Point 的 coordinates 本身是 position
+  特判直写；② 旧版恒写二维 `[x,y]` 丢弃 Z/M——现仅覆写 x/y、
+  `concat(oldPos.slice(2))` 保留高程。两修复语义已写进 kanyu_edit 工具描述。
+- **undo 容量对齐内核**：EDIT_HISTORY_CAP 64→100（对齐 kanyu-edit History
+  默认，history.rs:32），旧注释自称「同语义」实为偏差。
+- 测试器 156→**162**（动态 +4：feature-move 平移+undo 闭环、LineString 缺省
+  ringPath 修复实测、Point 特判+Z 保留）+ static 120→**126**（+2 契约键）；
+  3080 生产桥实测 feature-move 平移/撤销闭环通过（workspace-write 模式下
+  仅实例工作区内可写，教训沿用）。
+
 ## [0.51.0] — 2026-08-18
 
 - **目录 .kyu 工程图层接力（第五十五轮，目录→地图联动闭环）**：新增
