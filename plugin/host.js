@@ -210,13 +210,25 @@ return {
     }
 
     // ------ 能力 1：地图面板（离屏渲染 → base64 PNG 回传 Client） ------
-    async function renderMap(path, theme, width, height) {
+    async function renderMap(path, theme, width, height, style) {
       await ensureOutDir()
       const p = await procPath(path)
       const out = OUT_DIR + '\\kanyu-map-' + Date.now() + '.png'
       const args = ['render', 'map', '--json', '--out', q(out),
         '--width', String(width || 800), '--height', String(height || 600),
-        '--theme', theme === 'dark' ? 'dark' : 'light', q(p)]
+        '--theme', theme === 'dark' ? 'dark' : 'light']
+      // 属性驱动符号化（StyleRule，对齐 kanyu-render：graduated/categorical）。
+      // 走 --style-file 而非内联 --style：JSON 内嵌双引号在 pwsh 下无法经
+      // 命令行引号转义可靠传递（2026-08-18 实测 3080 桥打穿为 pwsh 后端，
+      // \" 转义被拆成多参数报 unexpected argument）；样式 JSON 落临时文件，
+      // 路径参数不含引号，pwsh/bash 双兼容。非法规则由内核中文校验报错回传。
+      if (style && typeof style === 'object') {
+        const sf = OUT_DIR + '\\kanyu-style-' + Date.now() + '.json'
+        const target = await fs.resolve(sf)
+        await fs.writeText(target, JSON.stringify(style))
+        args.push('--style-file', q(sf))
+      }
+      args.push(q(p))
       const r = await runKanyu(args, 180000)
       if (!r.ok || !fs) return { run: r, pngBase64: null, out }
       try {
@@ -500,7 +512,7 @@ return {
     harness.handle('data.info', async (a) => dataInfo(a && a.path))
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
-    harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height))
+    harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('geoprocess.list', async () => ({ ok: true, tools: GP_TOOLS }))
@@ -581,15 +593,16 @@ return {
 
     textTool({
       name: 'kanyu_render',
-      description: '离屏渲染 GIS 数据为地图 PNG（晨山 light/夜观星 dark 主题）。返回图片落盘路径，可用 read_image 查看。',
+      description: '离屏渲染 GIS 数据为地图 PNG（晨山 light/夜观星 dark 主题，支持属性驱动符号化）。返回图片落盘路径，可用 read_image 查看。',
       parameters: {
         path: { type: 'string', required: true, description: '数据文件路径' },
         theme: { type: 'string', description: 'light（晨山）| dark（夜观星），默认 light' },
         width: { type: 'number', description: '宽度像素（默认 800）' },
         height: { type: 'number', description: '高度像素（默认 600）' },
+        style: { type: 'object', description: '属性驱动符号化（StyleRule）：分级 {"type":"graduated","field":"height","stops":[[阈值,"#RRGGBB"],…]（严格升序）}；唯一值 {"type":"categorical","field":"usage","colors":{"类别":"#RRGGBB"},"default":"#888888"}' },
       },
       async execute(args) {
-        const r = await renderMap(args.path, args.theme, args.width, args.height)
+        const r = await renderMap(args.path, args.theme, args.width, args.height, args.style)
         if (!r.run.ok) return '渲染失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
         return '渲染完成: ' + r.out + (r.pngBase64 ? '（PNG ' + Math.round(r.pngBase64.length * 3 / 4 / 1024) + 'KB，可 read_image 查看）' : '（图片读取失败）')
       },

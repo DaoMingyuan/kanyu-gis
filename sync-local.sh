@@ -29,7 +29,16 @@ else
 fi
 WORK="$(cd "$NPX_CACHE" 2>/dev/null && pwd || echo "$ROOT")"
 PKG_PATH="$(cygpath -m "$ROOT/dsh/pkg" 2>/dev/null || echo "$ROOT/dsh/pkg")"
+PROFILE_NM="$HOME/.dsh/profiles/web/node_modules/kanyu-gis-dsh-plugin"
 (cd "$WORK" && "$DSH" plugin --profile web remove kanyu-gis-dsh-plugin || true)
+# remove 偶发部分失败（pnpm 报错但目录已删，或残留旧副本）——强制清残留，
+# 否则紧随的 add 会命中缓存跳过拷贝，profile 副本滞留旧内容（2026-08-18 实测）
+[ -d "$PROFILE_NM" ] && rm -rf "$PROFILE_NM"
 (cd "$WORK" && "$DSH" plugin --profile web add "file:$PKG_PATH")
+# 新鲜度校验：profile 副本与仓库源内容级一致（忽略 CRLF 差异），不一致即失败
+if [ -f "$PROFILE_NM/client.js" ] && ! diff <(tr -d '\r' < "$PROFILE_NM/client.js") <(tr -d '\r' < "$ROOT/dsh/pkg/client.js") >/dev/null; then
+  echo "✗ profile 副本与仓库源不一致（pnpm 缓存复用？）——请手工 remove 后删 $PROFILE_NM 再 add" >&2
+  exit 1
+fi
 
 echo "== 完成。若 dsh web 正在运行，重启实例后组合树/boot 图刷新生效 =="

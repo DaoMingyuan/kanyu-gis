@@ -178,6 +178,20 @@ async function main() {
     const render = await callRpc('render.map', { path: EXAMPLE, theme: 'light', width: 480, height: 320 });
     check('render.map：PNG 出图 + base64 回传', render.run && render.run.ok && render.pngBase64 && render.pngBase64.length > 500,
       render.out ? 'out=' + path.basename(render.out) + ' b64=' + (render.pngBase64 || '').length : '无输出');
+    // 属性驱动符号化直通（StyleRule graduated，对齐 kanyu render --style）
+    const renderSym = await callRpc('render.map', {
+      path: EXAMPLE, theme: 'light', width: 480, height: 320,
+      style: { type: 'graduated', field: 'height', stops: [[10, '#D85C4A'], [20, '#E8A33D'], [40, '#2D6A5E']] },
+    });
+    check('render.map 符号化：graduated(height) 直通 --style 出图',
+      renderSym.run && renderSym.run.ok && renderSym.pngBase64 && renderSym.pngBase64.length > 500,
+      renderSym.run && !renderSym.run.ok ? String(renderSym.run.stderr).slice(0, 120) : 'ok');
+    // 非法规则由内核中文校验报错（阈值非升序）
+    const renderBad = await callRpc('render.map', {
+      path: EXAMPLE, style: { type: 'graduated', field: 'height', stops: [[20, '#D85C4A'], [10, '#E8A33D']] },
+    });
+    check('render.map 符号化：非升序 stops 内核校验拒绝', renderBad.run && !renderBad.run.ok && /升序/.test(String(renderBad.run.stderr)),
+      renderBad.run ? 'exit=' + renderBad.run.exitCode : '无 run');
   }
 
   // ④ 坐标框架（能力 3）
@@ -266,6 +280,11 @@ async function main() {
   check('client.js 3D 管线对齐内核 scene3d.rs（yaw/pitch/背面剔除/高度归一化 0.25/拖拽旋转）',
     s3dKeys.every((k) => clientSrc.includes(k)),
     s3dKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 地图面板符号化（2026-08-18 第十二轮）：buildStyle 构建 StyleRule 直通 --style
+  const symKeys = ['buildStyle', 'graduated', 'categorical', '符号化'];
+  check('client.js 地图页签符号化控件（buildStyle + graduated/categorical）',
+    symKeys.every((k) => clientSrc.includes(k)),
+    symKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -294,6 +313,9 @@ async function main() {
   check('pkg/client.js 3D 管线对齐内核 scene3d.rs（与动态半同契约）',
     s3dKeys.every((k) => pkgClientSrc.includes(k)),
     s3dKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 地图页签符号化控件（与动态半同契约）',
+    symKeys.every((k) => pkgClientSrc.includes(k)),
+    symKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));

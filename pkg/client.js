@@ -163,10 +163,32 @@ window.__ModuleLoader__.load({
     }
 
     // 地图：离屏渲染面板
+    // 符号化规则构建（StyleRule 直通 kanyu render --style）：
+    // graduated stops 文本「阈值:#RRGGBB,…」（严格升序）；
+    // categorical colors 文本「类别:#RRGGBB,…」+ 可选默认色「*:#888888」。
+    function buildStyle(method, field, spec) {
+      if (method === 'none' || !field.trim()) return null
+      const pairs = spec.split(',').map(s => s.trim()).filter(Boolean)
+        .map(s => { const i = s.lastIndexOf(':'); return i > 0 ? [s.slice(0, i).trim(), s.slice(i + 1).trim()] : null })
+        .filter(Boolean)
+      if (method === 'graduated') {
+        const stops = pairs.map(p => [Number(p[0]), p[1]]).filter(p => isFinite(p[0]))
+        return stops.length ? { type: 'graduated', field: field.trim(), stops } : null
+      }
+      const colors = {}; let def = null
+      pairs.forEach(p => { if (p[0] === '*') def = p[1]; else colors[p[0]] = p[1] })
+      const rule = { type: 'categorical', field: field.trim(), colors }
+      if (def) rule.default = def
+      return Object.keys(colors).length ? rule : null
+    }
+
     function TabMap(props) {
       const store = props.store
       const [path, setPath] = React.useState(store.path)
       const [theme, setTheme] = React.useState('light')
+      const [symMethod, setSymMethod] = React.useState('none')
+      const [symField, setSymField] = React.useState('')
+      const [symSpec, setSymSpec] = React.useState('')
       const [img, setImg] = React.useState(null)
       const [msg, setMsg] = React.useState('')
       const [busy, setBusy] = React.useState(false)
@@ -174,8 +196,9 @@ window.__ModuleLoader__.load({
       async function render2d() {
         setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
         try {
-          const r = await hostCall('render.map', { path, theme, width: 760, height: 520 })
-          if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out) }
+          const style = buildStyle(symMethod, symField, symSpec)
+          const r = await hostCall('render.map', { path, theme, width: 760, height: 520, style })
+          if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (style ? ' · 符号化: ' + style.type + '(' + style.field + ')' : '')) }
           else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
@@ -186,7 +209,16 @@ window.__ModuleLoader__.load({
           h('span', { className: 'kyg-label' }, '主题'),
           h('select', { className: 'kyg-input', value: theme, onChange: e => setTheme(e.target.value) },
             h('option', { value: 'light' }, '晨山 (light)'), h('option', { value: 'dark' }, '夜观星 (dark)')),
+          h('span', { className: 'kyg-label' }, '符号化'),
+          h('select', { className: 'kyg-input', value: symMethod, onChange: e => setSymMethod(e.target.value) },
+            h('option', { value: 'none' }, '单色（默认）'),
+            h('option', { value: 'graduated' }, '分级 (graduated)'),
+            h('option', { value: 'categorical' }, '唯一值 (categorical)')),
           h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: render2d }, '渲染')),
+        symMethod !== 'none' ? h('div', { className: 'kyg-row' },
+          h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '字段名', value: symField, onChange: e => setSymField(e.target.value) }),
+          h('input', { className: 'kyg-input', style: { flex: 1 }, value: symSpec, onChange: e => setSymSpec(e.target.value),
+            placeholder: symMethod === 'graduated' ? '阈值:#RRGGBB,…（严格升序，如 10:#D85C4A,20:#E8A33D）' : '类别:#RRGGBB,…（*:#888888 为默认色）' })) : null,
         h('div', { className: 'kyg-hint' }, msg),
         img ? h('img', { className: 'kyg-img', src: img, alt: '地图渲染' }) : null,
       )

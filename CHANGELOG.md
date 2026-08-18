@@ -1,5 +1,22 @@
 # dsh/ 组件变更记录
 
+## [0.9.0] — 2026-08-18
+
+- **地图面板接入属性驱动符号化（StyleRule 对齐 kanyu-render）**：`render.map`
+  RPC 与 `kanyu_render` 动态工具新增 `style` 参数（graduated 分级 /
+  categorical 唯一值，语义即 `kanyu render map --style`）；双客户端地图页签
+  新增符号化控件（方法选择 + 字段 + 规则文本，`buildStyle` 构建 StyleRule，
+  graduated 文本「阈值:#RRGGBB,…」、categorical「类别:#RRGGBB,…，* 为默认色」）。
+- **pwsh 引号教训（实测排障入档）**：JSON 内嵌双引号不能经命令行传递——
+  `\"` 转义在 bash 成立、在 pwsh（DSH 生产 shell 后端）被拆成多参数
+  （3080 桥实测报 `unexpected argument`）。样式改走 `--style-file`：
+  Host 半先落临时 JSON 再传路径（路径无引号，双 shell 兼容）。
+- **sync-local.sh 加固**：remove 后强制清 profile 残留目录（pnpm 部分失败时
+  旧副本滞留致 add 命中缓存跳过拷贝）+ add 后内容级新鲜度校验（不一致即
+  exit 1）。测试器新增 4 断言（graduated 出图 / 非升序内核拒止 / 双客户端
+  符号化控件契约），总计 **46/46 全绿**（static 35/35）；3080 桥端到端实测
+  graduated PNG 出图并目检（分档着色正确）。
+
 ## [0.8.0] — 2026-08-18
 
 - **GIS 模式接入 kanyu-mcp（堪舆内核 AI 意图面整合）**：preset 组合新增
