@@ -1,5 +1,22 @@
 # dsh/ 组件变更记录
 
+## [0.25.0] — 2026-08-18
+
+- **处理域深化：ToolboxPanel 产图层工具设为当前图层联动**（落盘联动范式
+  第三处）：双端 tbRun 改造——产图层工具（`def.report === false` 且无
+  OutFile 参数）输出缺省落 `dsh/output/kanyu-tool-<id>-<ts>.geojson`
+  （`split_by_field` 为 toolrun.rs 唯一 NewLayers 多产出，output 视作目录
+  不加扩展名）→ 成功解析 stderr「已写出 N 个要素 → path」清单 → 首个产出
+  设为当前图层并广播（各页签联动）；报告类工具保持原文直出；export 工具
+  OutFile 参数自带路径不动。输出框占位提示同步更新。
+- **host.js `toolboxRun` 健壮性修复**：落盘前先 `ensureOutDir()`——
+  `kanyu tool run --output` 单产出走 `write_geojson_result` 同为
+  `std::fs::write` 不建父目录（与 dataQuery/crsReproject 同款防护，
+  至此三条 --output 路径全部保底）。RPC 表不变仍 25。
+- **测试器 +4 断言**（toolbox.run stderr 写出清单契约、ensureOutDir
+  静态契约、双端 tbRun 联动契约键）；总计 **86/86 全绿**（static 68/68）。
+  3080 桥实测：buffer 带 output 落盘实例工作区，stderr 计数 4 要素正确。
+
 ## [0.24.0] — 2026-08-18
 
 - **坐标框架域深化：投影变换联动闭环**：双客户端坐标页签「投影变换」按钮

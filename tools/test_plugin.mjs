@@ -155,6 +155,9 @@ async function main() {
   // crs.reproject 同款防护（2026-08-18 第二十七轮）：write_geojson_result 同为 std::fs::write
   check('host.js crsReproject 落盘前 ensureOutDir（reproject --output 同款防护）',
     /async function crsReproject[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
+  // toolbox.run 同款防护（2026-08-18 第二十八轮）：tool run --output 单产出同路径写出
+  check('host.js toolboxRun 落盘前 ensureOutDir（tool run --output 同款防护）',
+    /async function toolboxRun[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
 
@@ -322,6 +325,10 @@ async function main() {
     try { tbFeat = JSON.parse(await fsp.readFile(tbOut, 'utf8')).features.length; } catch { /* 断言兜底 */ }
     check('toolbox.run buffer：注册表路径输出 4 要素', tbRun.ok && tbFeat === 4,
       'exit=' + tbRun.exitCode + ' features=' + tbFeat + ' ' + String(tbRun.stderr).slice(0, 120));
+    // 产图层工具联动依赖面（2026-08-18 第二十八轮）：stderr 写出清单契约
+    check('toolbox.run buffer：stderr「已写出 N 个要素 → path」契约（客户端 tbRun 联动依赖面）',
+      /已写出 4 个要素 → .+tool-buffer\.geojson/.test(String(tbRun.stderr)),
+      String(tbRun.stderr).slice(0, 100));
     const tbReport = await callRpc('toolbox.run', { id: 'stats', params: { layer: EXAMPLE } });
     check('toolbox.run stats：报告类工具 JSON 包装（feature_count=4）',
       tbReport.ok && /"tool"\s*:\s*"stats"/.test(tbReport.stdout) && /feature_count\\?"?\s*:\s*\\?4/.test(tbReport.stdout),
@@ -465,6 +472,11 @@ async function main() {
   check('client.js 坐标页签投影变换联动（runReproject + 落盘 dsh/output + 设为当前图层）',
     crsKeys.every((k) => clientSrc.includes(k)),
     crsKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 处理页签产图层工具联动（2026-08-18 第二十八轮）：tbRun 缺省落盘 + stderr 清单 + 首产出设当前图层
+  const tbLinkKeys = ['producesLayer', 'kanyu-tool-', 'split_by_field', '已设为当前图层'];
+  check('client.js 处理页签产图层工具联动（tbRun 缺省落盘 + stderr 写出清单 + 设为当前图层）',
+    tbLinkKeys.every((k) => clientSrc.includes(k)),
+    tbLinkKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -517,6 +529,9 @@ async function main() {
   check('pkg/client.js 坐标页签投影变换联动（与动态半同契约）',
     crsKeys.every((k) => pkgClientSrc.includes(k)),
     crsKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 处理页签产图层工具联动（与动态半同契约）',
+    tbLinkKeys.every((k) => pkgClientSrc.includes(k)),
+    tbLinkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));

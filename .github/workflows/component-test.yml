@@ -12,7 +12,7 @@
 #
 # 边界：调用 kanyu CLI 的断言（ping/introspect/data.*/render.map/
 # crs.reproject/geoprocess.run/动态工具抽查）在 CI 无 CLI 此前提，整组跳过，
-# 由本机全量模式（`node dsh/tools/test_plugin.mjs`，82 断言）覆盖；
+# 由本机全量模式（`node dsh/tools/test_plugin.mjs`，86 断言）覆盖；
 # verify_preset.mjs 依赖本机 DSH npx 缓存检出（绝对路径），不可进 CI。
 
 name: component-test

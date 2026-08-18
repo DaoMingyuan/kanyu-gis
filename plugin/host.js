@@ -386,7 +386,8 @@ return {
         const v = kv[k]
         if (v !== undefined && v !== null && v !== '') args.push('--param', q(k + '=' + v))
       }
-      if (output) args.push('--output', q(await procPath(output)))
+      // kanyu tool run --output 单产出底层 std::fs::write 不建父目录，先确保 dsh/output 存在
+      if (output) { await ensureOutDir(); args.push('--output', q(await procPath(output))) }
       return runKanyu(args, 300000)
     }
 

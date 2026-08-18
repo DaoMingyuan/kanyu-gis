@@ -450,13 +450,29 @@ window.__ModuleLoader__.load({
         })
         setTbKv(kv)
       }
+      // 产图层工具联动：缺省落盘 dsh/output/ → stderr 解析写出清单 → 首产出设为当前图层
+      // （split_by_field 为 toolrun.rs 唯一 NewLayers 多产出，output 视作目录；报告类直出原文）
       async function tbRun() {
         setTbBusy(true); setTbOut('运行中…')
         try {
-          const r = await hostCall('toolbox.run', { id: tbId, params: tbKv, output: tbOutPath || undefined })
-          setTbOut(fmtJson(r && r.stdout !== undefined
-            ? { ok: r.ok, exit: r.exitCode, stdout: String(r.stdout).slice(0, 1600), stderr: String(r.stderr).slice(0, 400), error: r.error }
-            : r))
+          const producesLayer = def && !def.report && !hasOutFile
+          const multi = tbId === 'split_by_field'
+          let outArg = tbOutPath
+          if (producesLayer && !outArg)
+            outArg = 'dsh/output/kanyu-tool-' + tbId + '-' + Date.now() + (multi ? '' : '.geojson')
+          const r = await hostCall('toolbox.run', { id: tbId, params: tbKv, output: outArg || undefined })
+          const writes = r && r.ok ? [...String(r.stderr || '').matchAll(/已写出 (\d+) 个要素 → (.+)/g)] : []
+          if (producesLayer && writes.length) {
+            const first = writes[0][2].trim()
+            store.path = first; props.notify()
+            setTbOut(def.name + ' 完成：' + writes.map(w => w[1] + ' 要素').join('、')
+              + (writes.length === 1 ? ' → 已设为当前图层: ' + first
+                : '（多产出 ' + writes.length + ' 个，首组已设为当前图层: ' + first + '）'))
+          } else {
+            setTbOut(fmtJson(r && r.stdout !== undefined
+              ? { ok: r.ok, exit: r.exitCode, stdout: String(r.stdout).slice(0, 1600), stderr: String(r.stderr).slice(0, 400), error: r.error }
+              : r))
+          }
         } catch (e) { setTbOut('RPC 失败: ' + (e && e.message || e)) }
         setTbBusy(false)
       }
@@ -488,7 +504,7 @@ window.__ModuleLoader__.load({
           }))) : null,
         def ? h('div', { className: 'kyg-hint' }, def.desc) : null,
         def ? def.params.map(p => h('div', { key: p.key }, Field(p.label + (p.required ? ' *' : ''), widget(p)))) : null,
-        def && !def.report && !hasOutFile ? Field('输出', h('input', { className: 'kyg-input', value: tbOutPath, onChange: e => setTbOutPath(e.target.value), placeholder: 'GeoJSON 路径（缺省打印；多产出工具视作目录）' })) : null,
+        def && !def.report && !hasOutFile ? Field('输出', h('input', { className: 'kyg-input', value: tbOutPath, onChange: e => setTbOutPath(e.target.value), placeholder: 'GeoJSON 路径（缺省落 dsh/output 并设为当前图层；多产出视作目录）' })) : null,
         def ? h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: tbBusy, onClick: tbRun }, '运行 ' + def.name)) : null,
         h(ResultPre, { text: tbOut }),
