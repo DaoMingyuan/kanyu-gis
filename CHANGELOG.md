@@ -1,5 +1,14 @@
 # dsh/ 组件变更记录
 
+## [0.4.2] — 2026-08-18
+
+- `presets/kanyu-gis/skills/kanyu-gis/SKILL.md` 新增「DSH 组件形态」章节，对齐组件
+  现状：双半与双安装形态（plugin/ 动态 cordis 包 + pkg/ 常驻静态 web profile）、
+  8 个动态工具清单、17 项 RPC 全清单、工作台 preset 门控联动、编辑逆操作双栈、
+  组件验证面（test_plugin.mjs 40 断言 / verify_preset.mjs / sync-preset.sh）。
+  同轮记录：本地三个模型端点（11434/1031614/15724）实测全部离线（curl 000），
+  kanyu-gis 会话首局对话实测顺延。
+
 ## [0.5.0] — 2026-08-18
 
 - **编辑能力深化：对齐 kanyu-edit 内核范式（命令逆操作双栈）**——`host.js` 编辑段

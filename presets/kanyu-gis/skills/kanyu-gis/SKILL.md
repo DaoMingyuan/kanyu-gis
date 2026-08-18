@@ -40,6 +40,17 @@ kanyu introspect --json              # 机器可读
 | 技能（WASM 宿主） | `crates/kanyu-skill/` | wasmtime 沙箱 + WIT 组件模型 ABI + fuel 配额 | `cargo build -p kanyu-skill && cargo test -p kanyu-skill` |
 | AI/MCP 联动入口 | 根 `AGENTS.md` + `crates/kanyu-core/src/introspect.rs` | `kanyu introspect`、`kanyu agents validate`、`kanyu agents init`（模板：`--geo [crs]` / `--code-repo [crs]`） | `kanyu agents validate --code-repo`（在仓库根执行，零路径参数） |
 
+## DSH 组件形态（本会话即运行在堪舆 GIS 组件之上）
+
+本 preset 会话所在的 DSH 组件源在 `dsh/`（开源双仓：主仓 `DaoMingyuan/Kanyu` 的 `dsh/` + 独立组件仓 `DaoMingyuan/kanyu-gis`）。需要「组件现在能做什么」时以代码与自省为准，勿抄本文：
+
+- **双半与双安装形态**：`dsh/plugin/host.js` + `plugin/client.js`（动态包形态，cordis_define/cordis_run，进程内存态不落盘）；`dsh/pkg/`（常驻静态双面包：`index.js` Host 适配器 + `client.js` 静态客户端 bundle + `package.json` dsh.client 声明，已装进本机 web profile，随 DSH 启动激活）。
+- **模型侧 8 工具**（Harness function-calling 面）：`kanyu_introspect` / `kanyu_catalog` / `kanyu_data` / `kanyu_render` / `kanyu_crs` / `kanyu_geoprocess` / `kanyu_edit` / `kanyu_scene3d`——全部经 PATH 上的 `kanyu` CLI 执行，找不到 CLI 时 kanyu-mcp 兜底。
+- **面板侧 17 RPC**（工作台页签 ↔ Host 半；静态形态经 `/kanyu-gis/call` 桥）：`ping` / `introspect` / `catalog.list` / `data.info` / `data.query` / `data.validate` / `render.map` / `crs.presets` / `crs.reproject` / `geoprocess.list` / `geoprocess.run` / `edit.ops` / `edit.apply` / `edit.undo` / `edit.redo` / `edit.history` / `scene3d.data`。
+- **GIS 工作台**：会话头部「🧭 堪舆GIS」按钮 + 七页签浮层（目录/数据/地图/坐标/处理/编辑/3D/关于），随 kanyu-gis preset 联动显示（会话 `agentPreset` 快照门控，切走即隐藏）。
+- **编辑内核**：对齐 kanyu-edit 命令逆操作双栈——变更算子应用时算结构化逆操作入 undo 栈（容量 64、新变更清 redo），撤销/重做经 `edit.undo`/`edit.redo`（工作台编辑页签有按钮）。
+- **组件验证面**：`node dsh/tools/test_plugin.mjs`（40 断言：RPC/工具/七能力/编辑双栈闭环/pkg 双面包契约 + RPC 桥实测）；`node dsh/tools/verify_preset.mjs --preset-dir dsh/presets`（preset 可加载性旁路校验，含运行时同款 name 判定）；`bash dsh/sync-preset.sh`（preset 仓库源 → 本机安装区 + 校验回灌）。
+
 ## 依赖方向（改前先确认不违反）
 
 `kanyu-core` 不依赖任何兄弟 crate；`render`/`skill` 依赖 core；`cli`/`mcp` 依赖 core+render+skill；`shell` 依赖 core+render+skill（外加 `edit` 内核的编辑命令）。内核**零 C 依赖**：GDAL/GEOS/LibreDWG 只能以可选 feature 或 WASM 插件存在，默认构建必须在三大桌面平台开箱通过。
