@@ -594,6 +594,11 @@ async function main() {
   check('client.js 编辑页签联动刷新（apply2/undoRedo 后属性表作废 + 顶点画布重载 + 广播）',
     editRefKeys.every((k) => clientSrc.includes(k)) && clientSrc.split('联动刷新').length >= 3,
     editRefKeys.filter((k) => !clientSrc.includes(k)).join(',') || '两处命中');
+  // 地图页签联动重渲染（2026-08-18 第四十轮）：store.rev 内容版本号 + 已渲染过自动跟随
+  const mapAutoKeys = ['store.rev', '联动重渲染', 'autoRef'];
+  check('client.js 地图页签联动重渲染（store.rev 版本号 + autoRef 跟随重渲 + 编辑四处递增）',
+    mapAutoKeys.every((k) => clientSrc.includes(k)) && clientSrc.split('store.rev++').length >= 5,
+    mapAutoKeys.filter((k) => !clientSrc.includes(k)).join(',') || '命中');
 
   // ---------- pkg 静态双面包契约（dsh.client 常驻形态，2026-08-18 第五轮新增） ----------
   const pkgJson = JSON.parse(await fsp.readFile(path.join(REPO_ROOT, dshPath('pkg', 'package.json')), 'utf8'));
@@ -658,6 +663,9 @@ async function main() {
   check('pkg/client.js 编辑页签联动刷新（与动态半同契约）',
     editRefKeys.every((k) => pkgClientSrc.includes(k)) && pkgClientSrc.split('联动刷新').length >= 3,
     editRefKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '两处命中');
+  check('pkg/client.js 地图页签联动重渲染（与动态半同契约）',
+    mapAutoKeys.every((k) => pkgClientSrc.includes(k)) && pkgClientSrc.split('store.rev++').length >= 5,
+    mapAutoKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '命中');
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));

@@ -1,5 +1,17 @@
 # dsh/ 组件变更记录
 
+## [0.37.0] — 2026-08-18
+
+- **地图页签联动重渲染（双端 Client）**：`store` 加 `rev` 内容版本号——
+  编辑页签 apply2/undoRedo/applyAttr/vUp 成功一律 `store.rev++` 并广播
+  （撤销/原地编辑改内容不改路径，此前地图页签无感知；vUp 此前仅路径变化
+  才广播）；TabMap 加联动重渲染 effect：已渲染过时 `store.path` 切换或
+  `rev` 递增自动 `render2d(store.path)`，未渲染过不自动出图防打扰。
+  `render2d` 改可传路径参数（按钮修正为无参调用，防事件对象误入）。
+  RPC 表不变仍 25。
+- **测试器 +2 断言**（双端「store.rev/联动重渲染/autoRef」契约键 +
+  store.rev++ 四处递增计数锁）；总计 **112/112 全绿**（static 89/89）。
+
 ## [0.36.0] — 2026-08-18
 
 - **目录页签 freshness 自动重扫（双端 Client）**：`useEffect` 监听

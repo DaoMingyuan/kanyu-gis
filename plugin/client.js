@@ -306,16 +306,27 @@ function TabMap(props) {
   const [msg, setMsg] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
-  async function render2d() {
+  async function render2d(p) {
+    const usePath = p || path
     setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
     try {
       const style = buildStyle(symMethod, symField, symSpec)
-      const r = await host.call('render.map', { path, theme, width: 760, height: 520, style })
+      const r = await host.call('render.map', { path: usePath, theme, width: 760, height: 520, style })
       if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (style ? ' · 符号化: ' + style.type + '(' + style.field + ')' : '')) }
       else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
+  // 联动重渲染（2026-08-18 第四十轮）：已渲染过时，跟随当前图层切换
+  // （store.path 变化）或同路径内容变更（store.rev 递增）自动重渲；未渲染过不自动出图
+  const autoRef = React.useRef({ path: '', rev: -1 })
+  React.useEffect(() => {
+    const a = autoRef.current
+    if (!img) { a.path = store.path; a.rev = store.rev; return }
+    if (store.path === a.path && store.rev === a.rev) return
+    a.path = store.path; a.rev = store.rev
+    if (store.path) render2d(store.path)
+  }, [store.path, store.rev, img])
   return h('div', null,
     Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
     h('div', { className: 'kyg-row' },
@@ -327,7 +338,7 @@ function TabMap(props) {
         h('option', { value: 'none' }, '单色（默认）'),
         h('option', { value: 'graduated' }, '分级 (graduated)'),
         h('option', { value: 'categorical' }, '唯一值 (categorical)')),
-      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: render2d }, '渲染')),
+      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染')),
     symMethod !== 'none' ? h('div', { className: 'kyg-row' },
       h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '字段名', value: symField, onChange: e => setSymField(e.target.value) }),
       h('input', { className: 'kyg-input', style: { flex: 1 }, value: symSpec, onChange: e => setSymSpec(e.target.value),
@@ -632,7 +643,7 @@ function TabEdit(props) {
         if (nextPath !== path) { store.path = nextPath; setPath(nextPath) }
         setAttrs(null)
         if (geo) { const g2 = await host.call('edit.geometry', { path: nextPath, maxFeatures: 200 }); if (g2 && g2.ok) setGeo(g2) }
-        props.notify()
+        store.rev++; props.notify()
       }
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
@@ -647,7 +658,7 @@ function TabEdit(props) {
       if (r && r.ok) {
         setAttrs(null)
         if (geo) { const g2 = await host.call('edit.geometry', { path, maxFeatures: 200 }); if (g2 && g2.ok) setGeo(g2) }
-        props.notify()
+        store.rev++; props.notify()
       }
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
@@ -673,7 +684,7 @@ function TabEdit(props) {
     setBusy(true); setOut('单元格写入中…')
     try {
       const r = await host.call('edit.apply', { path, op: 'attribute-set', args: { index: attrIdx, field: attrField, value: v }, inPlace })
-      setOut(fmtJson(r)); if (r && r.ok) setAttrs(null)
+      setOut(fmtJson(r)); if (r && r.ok) { setAttrs(null); store.rev++; props.notify() }
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
   }
@@ -732,8 +743,9 @@ function TabEdit(props) {
         args: { feature: d.sel.feature, ringPath: d.sel.ringPath, vertex: d.sel.vertex, x: rx, y: ry }, inPlace })
       setOut(fmtJson(r))
       const nextPath = (r && r.ok && !inPlace && r.output) ? r.output : path
-      if (r && r.ok && nextPath !== path) { store.path = nextPath; setPath(nextPath); props.notify() }
+      if (r && r.ok && nextPath !== path) { store.path = nextPath; setPath(nextPath) }
       if (r && r.ok) {
+        store.rev++; props.notify() // 内容版本号递增广播（同路径变更地图页签亦可感知）
         const g2 = await host.call('edit.geometry', { path: nextPath, maxFeatures: 200 })
         if (g2 && g2.ok) setGeo(g2)
       } else mapRef.current = drawEdit2d(cvE, geo, null)
@@ -974,7 +986,7 @@ return {
     styles.insert(CSS)
 
     // ------ 包级共享状态（头部按钮 ↔ 浮层窗口 ↔ cordis 卡片） ------
-    const store = { open: false, path: '' }
+    const store = { open: false, path: '', rev: 0 }
     const listeners = new Set()
     function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
     function useStore() {
