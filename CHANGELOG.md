@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.14.0] — 2026-08-18
+
+- **WMS GetMap 底图预览（壳层 services.rs v2 语义）**：新增 `services.wms`
+  RPC（RPC 表 20→**21**）——`buildGetmapUrl` 移植壳层同名纯函数（WMS 1.3.0
+  + CRS=EPSG:4326 + bbox 经/纬序六位小数，宽限服务器通用）；联机路径 10s
+  超时拉 PNG → base64 回传 Client 内联预览（content-type 非图像即报图层名
+  有误）；`urlOnly` 为离线契约路径（只构造地址不触网）。`kanyu_catalog`
+  动态工具加 `kind=wms` 分支。
+- **双客户端目录页签 WMS 底图预览**：服务链接分类加「图层名 + 预览底图」
+  行（基址与 WFS 发现共用），返回 PNG 内联显示。
+- **测试器 +1 断言**（buildGetmapUrl 逐字符契约：1.3.0/EPSG:4326/bbox 六位
+  小数/基址补 &），RPC 计数断言 20→21；总计 **56/56 全绿**（static 45/45）。
+  3080 桥实测 urlOnly 地址构造逐字符正确。
+
 ## [0.13.0] — 2026-08-18
 
 - **WFS GetFeature 拉取落 GeoJSON 图层（壳层 services.rs v1 语义）**：新增

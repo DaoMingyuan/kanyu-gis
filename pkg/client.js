@@ -157,11 +157,27 @@ window.__ModuleLoader__.load({
         } catch (e) { setSvcMsg('RPC 失败: ' + (e && e.message || e)) }
         setSvcBusy(false)
       }
+      // WMS GetMap 底图预览（services.wms，壳层 v2 语义）
+      const [wmsLayer, setWmsLayer] = React.useState('')
+      const [wmsImg, setWmsImg] = React.useState(null)
+      async function wmsPreview() {
+        setSvcBusy(true); setSvcMsg('GetMap 拉取中…'); setWmsImg(null)
+        try {
+          const r = await hostCall('services.wms', { url: svcUrl, layer: wmsLayer, width: 640, height: 320 })
+          if (r && r.ok) { setWmsImg('data:image/png;base64,' + r.png); setSvcMsg('底图 ' + r.bytes + ' 字节 PNG') }
+          else setSvcMsg('底图失败: ' + (r && r.error || '未知'))
+        } catch (e) { setSvcMsg('RPC 失败: ' + (e && e.message || e)) }
+        setSvcBusy(false)
+      }
       function svcSection() {
         return h('div', null,
           h('div', { className: 'kyg-row' },
-            h('input', { className: 'kyg-input', value: svcUrl, placeholder: 'WFS 服务基址，如 https://example.com/wfs', onChange: e => setSvcUrl(e.target.value) }),
+            h('input', { className: 'kyg-input', value: svcUrl, placeholder: 'WFS/WMS 服务基址，如 https://example.com/wfs', onChange: e => setSvcUrl(e.target.value) }),
             h('button', { className: 'kyg-btn', disabled: svcBusy || !svcUrl, onClick: discover }, '发现图层')),
+          h('div', { className: 'kyg-row' },
+            h('input', { className: 'kyg-input', value: wmsLayer, placeholder: 'WMS 图层名（layers），基址同上', onChange: e => setWmsLayer(e.target.value) }),
+            h('button', { className: 'kyg-btn', disabled: svcBusy || !svcUrl || !wmsLayer, onClick: wmsPreview }, '预览底图')),
+          wmsImg ? h('img', { className: 'kyg-img', src: wmsImg }) : null,
           svcMsg ? h('div', { className: 'kyg-hint' }, svcMsg) : null,
           svcLayers ? svcLayers.map((l, i) => h('div', { key: i, className: 'kyg-list-item' },
             h('span', { className: 'ext' }, 'WFS'),

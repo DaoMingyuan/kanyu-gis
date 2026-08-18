@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（20 个）', rpc.size === 20, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（21 个）', rpc.size === 21, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（8 个 kanyu_*）', tools.size === 8, [...tools.keys()].join(','));
   if (STATIC_ONLY) check('模式：--static（无 kanyu CLI，CLI 依赖断言整组跳过）', true,
     '布局=' + (IS_MAIN_LAYOUT ? '主仓 dsh/' : '组件仓根'));
@@ -188,6 +188,11 @@ async function main() {
   check('services.fetch：离线拉取落盘（FeatureCollection 校验 + 2 要素写出 + 图层名消毒入默认名）',
     fetched.ok && fetched.count === 2 && written === 2,
     'count=' + fetched.count + ' written=' + written);
+  // WMS GetMap 地址构造（urlOnly 离线契约路径，两种模式皆覆盖；2026-08-18 第十七轮）
+  const wms = await callRpc('services.wms', { url: 'https://example.com/wms?token=1', layer: 'demo:base', bbox: [113.5, 29.5, 114.5, 30.5], width: 800, height: 600, urlOnly: true });
+  check('services.wms：buildGetmapUrl 契约（1.3.0 + EPSG:4326 + bbox 六位小数 + 基址补 &）',
+    wms.ok && /service=WMS&request=GetMap&version=1\.3\.0&layers=demo:base&styles=&format=image\/png&transparent=false&crs=EPSG:4326&bbox=113\.500000,29\.500000,114\.500000,30\.500000&width=800&height=600$/.test(wms.source),
+    wms.source || '无 source');
   if (!STATIC_ONLY) {
     const info = await callRpc('data.info', { path: EXAMPLE });
     check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
@@ -326,8 +331,8 @@ async function main() {
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
     catKeys.every((k) => clientSrc.includes(k)),
     catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
-  // 服务链接发现/拉取表单（2026-08-18 第十五/十六轮）：discover + fetch + 拉取按钮
-  const svcKeys = ['services.discover', 'services.fetch', '发现图层', '拉取'];
+  // 服务链接发现/拉取/底图（2026-08-18 第十五/十六/十七轮）：discover + fetch + wms 预览
+  const svcKeys = ['services.discover', 'services.fetch', 'services.wms', '发现图层', '拉取', '预览底图'];
   check('client.js 目录页签服务链接发现/拉取表单（discover + fetch + 拉取按钮）',
     svcKeys.every((k) => clientSrc.includes(k)),
     svcKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -371,7 +376,7 @@ async function main() {
   // 两半契约漂移锁：客户端 hostCall('<m>') 方法名必须 ⊆ Host 半 RPC 表
   const clientMethods = [...pkgClientSrc.matchAll(/hostCall\('([a-z0-9.]+)'/g)].map((m) => m[1]);
   const missing = clientMethods.filter((m) => !rpc.has(m));
-  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 20 RPC）',
+  check('pkg/client.js ↔ host.js RPC 表无漂移（' + clientMethods.length + ' 方法 ⊆ 21 RPC）',
     missing.length === 0, missing.length ? '缺: ' + missing.join(',') : clientMethods.join(','));
 
   // pkg/index.js 适配器桥实测：mock tools/webServer 触发 apply，模拟 HTTP 请求打 ping

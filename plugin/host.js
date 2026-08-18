@@ -633,6 +633,36 @@ return {
       }
     }
 
+    // buildGetmapUrl 对齐壳层 services.rs build_getmap_url（WMS 1.3.0 +
+    // CRS=EPSG:4326，bbox 经度/纬度序六位小数——宽限服务器通用；严格 1.3.0
+    // 轴序服务器属壳层已声明的已知边界）。
+    function buildGetmapUrl(base, layer, bbox, w, h) {
+      const bb = (bbox && bbox.length === 4 ? bbox : [-180, -90, 180, 90]).map((v) => Number(v).toFixed(6))
+      return joinQuery(base) + 'service=WMS&request=GetMap&version=1.3.0&layers='
+        + String(layer || '').trim() + '&styles=&format=image/png&transparent=false&crs=EPSG:4326&bbox='
+        + bb.join(',') + '&width=' + (w || 640) + '&height=' + (h || 320)
+    }
+    // WMS GetMap 底图（壳层 v2 语义）；urlOnly 为离线契约路径（只构造地址
+    // 不触网）。联机路径拉 PNG → base64 回传 Client 内联预览。
+    async function servicesWms(url, layer, bbox, width, height, urlOnly) {
+      if (!layer || !String(layer).trim()) return { ok: false, error: '缺少图层名（layers）' }
+      if (!url || !/^https?:\/\//.test(url)) return { ok: false, error: '服务基址须为 http(s) URL' }
+      const reqUrl = buildGetmapUrl(url, layer, bbox, width, height)
+      if (urlOnly) return { ok: true, source: reqUrl }
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 10000) // 壳层契约：10s 超时
+        const resp = await fetch(reqUrl, { signal: ctrl.signal, redirect: 'follow' })
+        clearTimeout(timer)
+        const buf = Buffer.from(await resp.arrayBuffer())
+        const ct = String(resp.headers.get('content-type') || '')
+        if (!ct.includes('image')) return { ok: false, error: 'GetMap 响应非图像（' + (ct || '未知 content-type') + '）——请核对图层名' }
+        return { ok: true, source: reqUrl, png: buf.toString('base64'), bytes: buf.length }
+      } catch (e) {
+        return { ok: false, error: 'GetMap 拉取失败: ' + (e && e.message || e) }
+      }
+    }
+
     // ------ 系统自省 ------
     async function introspect() { return runKanyu(['introspect', '--json'], 60000) }
 
@@ -654,6 +684,7 @@ return {
     harness.handle('catalog.list', async (a) => catalogList(a && a.dir, a && a.depth))
     harness.handle('services.discover', async (a) => servicesDiscover(a && a.url, a && a.xml))
     harness.handle('services.fetch', async (a) => servicesFetch(a && a.url, a && a.layer, a && a.output, a && a.data))
+    harness.handle('services.wms', async (a) => servicesWms(a && a.url, a && a.layer, a && a.bbox, a && a.width, a && a.height, !!(a && a.urlOnly)))
     harness.handle('data.info', async (a) => dataInfo(a && a.path))
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
@@ -709,11 +740,17 @@ return {
       parameters: {
         dir: { type: 'string', description: '起始目录（缺省为会话工作区根）' },
         depth: { type: 'number', description: '递归深度（默认 3）' },
-        url: { type: 'string', description: 'WFS 服务基址（给出时忽略 dir/depth）' },
-        layer: { type: 'string', description: 'WFS 图层名 typeNames（与 url 同给时拉取该图层落 GeoJSON）' },
-        output: { type: 'string', description: '拉取输出路径（缺省 output/wfs_<图层>.geojson）' },
+        url: { type: 'string', description: 'WFS/WMS 服务基址（给出时忽略 dir/depth）' },
+        layer: { type: 'string', description: '服务图层名（WFS typeNames / WMS layers）' },
+        kind: { type: 'string', description: '服务类型：wfs（默认）/ wms（url+layer 时拉 GetMap 底图）' },
+        output: { type: 'string', description: 'WFS 拉取输出路径（缺省 output/wfs_<图层>.geojson）' },
       },
       async execute(args) {
+        if (args.url && args.layer && args.kind === 'wms') {
+          const w = await servicesWms(args.url, args.layer, null, 640, 320, false)
+          if (!w.ok) return 'WMS 底图拉取失败: ' + w.error
+          return 'WMS 底图 ' + args.layer + ' GetMap 拉取成功：' + w.bytes + ' 字节 PNG（640×320，EPSG:4326；来源：' + w.source + '）'
+        }
         if (args.url && args.layer) {
           const f = await servicesFetch(args.url, args.layer, args.output)
           if (!f.ok) return 'WFS 图层拉取失败: ' + f.error
