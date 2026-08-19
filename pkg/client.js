@@ -33,10 +33,15 @@ window.__ModuleLoader__.load({
   border-bottom:1px solid rgba(200,97,74,.3);font-weight:600}
 .kyg-topbar .kyg-title{flex:1}
 .kyg-tabs{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
-.kyg-tab{background:none;border:none;color:#9aa4b8;padding:6px 10px;cursor:pointer;font-size:12px;
+.kyg-tab{display:inline-flex;flex-direction:column;align-items:center;gap:2px;background:none;
+  border:none;color:#9aa4b8;padding:5px 10px;cursor:pointer;font-size:12px;
   border-radius:8px 8px 0 0;border-bottom:2px solid transparent}
 .kyg-tab:hover{color:#dfe5f0}
 .kyg-tab-active{color:#f0b7a4;border-bottom:2px solid #c8614a;background:rgba(200,97,74,.1)}
+.kyg-grp{display:flex;flex-direction:column;align-items:center;padding:2px 10px 0;border-right:1px solid rgba(255,255,255,.07)}
+.kyg-grp:last-child{border-right:none}
+.kyg-grp-btns{display:flex;gap:2px}
+.kyg-grp-label{font-size:10px;color:#6b7489;padding:2px 0 3px;letter-spacing:2px}
 .kyg-main{display:flex;flex:1;min-height:0}
 .kyg-dock{width:230px;min-width:230px;border-right:1px solid rgba(255,255,255,.08);overflow-y:auto;padding:8px}
 .kyg-dock-head{display:flex;align-items:center;justify-content:space-between;font-weight:600;padding:2px 4px 8px}
@@ -1744,15 +1749,37 @@ window.__ModuleLoader__.load({
 
     // ---------- 工作台主窗口 ----------
 
+    // 堪舆手绘风页签图标（第八十六轮 GIS 界面重排）：16×16 线稿 SVG，
+    // stroke=currentColor 随页签态变色（激活=赭红高亮，对齐壳层 ui_kit 手绘图标语义）
+    const KYG_ICONS = {
+      catalog: 'M1.8 3.5 h4.6 l1.5 2 h6.3 v7 H1.8 z',
+      data: 'M2 3 h12 v10 H2 z M2 6.3 h12 M2 9.7 h12 M7 3 v10',
+      map: 'M8 13.8 C5.5 11 3.2 8.9 3.2 6.4 a4.8 4.8 0 0 1 9.6 0 c0 2.5-2.3 4.6-4.8 7.4 z M8 8.2 a1.9 1.9 0 1 0 0-3.8 a1.9 1.9 0 0 0 0 3.8',
+      crs: 'M8 1.5 v3 M8 11.5 v3 M1.5 8 h3 M11.5 8 h3 M8 5.2 a2.8 2.8 0 1 0 0 5.6 a2.8 2.8 0 0 0 0-5.6',
+      gp: 'M8 5.4 a2.6 2.6 0 1 0 0 5.2 a2.6 2.6 0 0 0 0-5.2 M8 1.2 v2 M8 12.8 v2 M1.2 8 h2 M12.8 8 h2 M3.2 3.2 l1.4 1.4 M11.4 11.4 l1.4 1.4 M12.8 3.2 l-1.4 1.4 M4.6 11.4 l-1.4 1.4',
+      edit: 'M2.6 13.4 l0.9-3.3 7-7 2.4 2.4 -7 7 z M9.6 4.2 l2.4 2.4',
+      scene3d: 'M8 1.6 L14 4.9 v6.2 L8 14.4 2 11.1 V4.9 Z M2 4.9 L8 8 l6-3.1 M8 8 v6.4',
+      about: 'M8 1.6 a6.4 6.4 0 1 0 0 12.8 a6.4 6.4 0 0 0 0-12.8 M8 7.2 v4 M8 4.4 v0.6',
+      compass: 'M8 1.6 a6.4 6.4 0 1 0 0 12.8 a6.4 6.4 0 0 0 0-12.8 M10.9 5.1 L8.9 8.9 5.1 10.9 7.1 7.1 Z',
+    }
+    function kanyuIcon(name, size) {
+      return h('svg', { viewBox: '0 0 16 16', width: size || 15, height: size || 15, fill: 'none',
+        stroke: 'currentColor', strokeWidth: '1.3', strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true', style: { flexShrink: 0 } },
+        h('path', { d: KYG_ICONS[name] || KYG_ICONS.about }))
+    }
+    // GIS 操作分组（ribbon 范式：组框 + 组标签，ArcGIS Pro 功能区同语义）
+    const KYG_GRPS = ['数据管理', '地图视图', '分析处理', '编辑', '系统']
+
     const TABS = [
-      { id: 'catalog', name: '目录', C: TabCatalog },
-      { id: 'data', name: '数据', C: TabData },
-      { id: 'map', name: '地图', C: TabMap },
-      { id: 'crs', name: '坐标', C: TabCrs },
-      { id: 'gp', name: '处理', C: TabGp },
-      { id: 'edit', name: '编辑', C: TabEdit },
-      { id: 'scene3d', name: '3D', C: Tab3d },
-      { id: 'about', name: '关于', C: TabAbout },
+      { id: 'catalog', name: '目录', grp: '数据管理', icon: 'catalog', C: TabCatalog },
+      { id: 'data', name: '数据', grp: '数据管理', icon: 'data', C: TabData },
+      { id: 'map', name: '地图', grp: '地图视图', icon: 'map', C: TabMap },
+      { id: 'scene3d', name: '3D', grp: '地图视图', icon: 'scene3d', C: Tab3d },
+      { id: 'crs', name: '坐标', grp: '分析处理', icon: 'crs', C: TabCrs },
+      { id: 'gp', name: '处理', grp: '分析处理', icon: 'gp', C: TabGp },
+      { id: 'edit', name: '编辑', grp: '编辑', icon: 'edit', C: TabEdit },
+      { id: 'about', name: '关于', grp: '系统', icon: 'about', C: TabAbout },
     ]
 
     // 客户端 cordis 服务清单（fiber inject）：slots 注册、会话 preset 快照、
@@ -1926,7 +1953,7 @@ window.__ModuleLoader__.load({
         if (!s.open) return h('button', {
           className: 'kyg-reopen', title: '回到堪舆 GIS 工作台',
           onClick: () => { store.open = true; notify() },
-        }, '🧭 堪舆GIS')
+        }, kanyuIcon('compass', 13), '堪舆GIS')
         if (!rect) return null
         const cur = TABS.find(t => t.id === tab) || TABS[0]
         const base = s.path ? String(s.path).split(/[\\/]/).pop() : ''
@@ -1934,7 +1961,7 @@ window.__ModuleLoader__.load({
             left: rect.left + 'px', top: rect.top + 'px',
             width: rect.width + 'px', height: rect.height + 'px' } },
           h('div', { className: 'kyg-topbar' },
-            h('span', null, '🧭'),
+            kanyuIcon('compass', 17),
             h('span', null, '堪舆 GIS 工作台'),
             h('span', { className: 'kyg-badge' }, 'kanyu 内核'),
             h('select', { className: 'kyg-input', style: { maxWidth: '150px', padding: '1px 4px', fontSize: '11px' }, title: '.kyu 工程选择（载入图层清单到图层坞）',
@@ -1944,10 +1971,13 @@ window.__ModuleLoader__.load({
             h('span', { className: 'kyg-title' }),
             h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { store.open = false; notify() } }, '返回会话')),
           h('div', { className: 'kyg-tabs' },
-            TABS.map(t => h('button', {
-              key: t.id, className: 'kyg-tab' + (t.id === tab ? ' kyg-tab-active' : ''),
-              onClick: () => setTab(t.id),
-            }, t.name))),
+            KYG_GRPS.map(g => h('div', { key: g, className: 'kyg-grp' },
+              h('div', { className: 'kyg-grp-btns' },
+                TABS.filter(t => t.grp === g).map(t => h('button', {
+                  key: t.id, className: 'kyg-tab' + (t.id === tab ? ' kyg-tab-active' : ''),
+                  onClick: () => setTab(t.id),
+                }, kanyuIcon(t.icon), h('span', null, t.name)))),
+              h('div', { className: 'kyg-grp-label' }, g)))),
           h('div', { className: 'kyg-main' },
             h(Dock, { store: s, notify }),
             h('div', { className: 'kyg-center' }, h(cur.C, { store: s, notify }))),
@@ -1971,7 +2001,7 @@ window.__ModuleLoader__.load({
           className: 'kyg-header-btn',
           title: '堪舆 GIS 工作台（kanyu 内核驱动）',
           onClick: () => { store.open = !s.open; notify() },
-        }, '🧭 堪舆GIS')
+        }, kanyuIcon('compass', 13), '堪舆GIS')
       }
 
       // ------ Slot 注册（slots.inject 可用时等待声明，否则直接注册） ------

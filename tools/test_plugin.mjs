@@ -1096,6 +1096,14 @@ async function main() {
   check('client.js 底图 WMS 入画布背景（透明渲染 + GetMap 垫底 + 合成导出）',
     basemapKeys.every((k) => clientSrc.includes(k)),
     basemapKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // GIS 界面重排 + 堪舆图标（2026-08-19 第八十六轮）：ribbon 分组（KYG_GRPS
+  // 组框+组标签）+ 手绘风 SVG 页签图标（kanyuIcon 罗盘/图钉/十字丝等，stroke
+  // currentColor 随态变色，对齐壳层 ui_kit 手绘图标语义）+ 顶栏/头部/重开钮
+  // 罗盘图标替 emoji
+  const ribbonKeys = ['kanyuIcon', 'KYG_GRPS', 'kyg-grp', 'kyg-grp-label', 'compass', '数据管理', '地图视图', '分析处理'];
+  check('client.js GIS 界面重排 + 堪舆手绘图标（ribbon 分组 + kanyuIcon SVG）',
+    ribbonKeys.every((k) => clientSrc.includes(k)),
+    ribbonKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     fullKeys.every((k) => clientSrc.includes(k)),
     fullKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1299,6 +1307,9 @@ async function main() {
   check('pkg/client.js 底图 WMS 入画布背景（与动态半同契约）',
     basemapKeys.every((k) => pkgClientSrc.includes(k)),
     basemapKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js GIS 界面重排 + 堪舆手绘图标（与动态半同契约）',
+    ribbonKeys.every((k) => pkgClientSrc.includes(k)),
+    ribbonKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
