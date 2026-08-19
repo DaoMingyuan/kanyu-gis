@@ -1176,7 +1176,7 @@ function TabEdit(props) {
   // 技能分析对话框（WASM 沙箱，2026-08-19 第七十轮）：缓冲区（buffer_zones
   // _distance）/ 叠加分析（overlay_ops _op + 第二图层）/ 融合（dissolve_field
   // _field）/ 统计（stat_summary _stat + 可选 _field 分组）/ 简化（simplify_geom
-  // _tolerance RDP 容差）；param/input2 注入通道，
+  // _tolerance RDP 容差）/ 量算（measure_geom _measure area/length）；param/input2 注入通道，
   // 产出落 dsh/output 接力当前图层（同 applyCutPoly 产图层联动语义）
   const [bufDist, setBufDist] = React.useState('')
   const [ovlOp, setOvlOp] = React.useState('intersect')
@@ -1185,6 +1185,7 @@ function TabEdit(props) {
   const [statField, setStatField] = React.useState('')
   const [statGroup, setStatGroup] = React.useState('')
   const [simpTol, setSimpTol] = React.useState('')
+  const [meaOp, setMeaOp] = React.useState('area')
   async function skillRelay(r, outPath, label) {
     if (r && r.ok) {
       store.path = outPath; setPath(outPath)
@@ -1246,6 +1247,14 @@ function TabEdit(props) {
     try {
       const r = await host.call('skill.run', { skill: 'dsh/skills/simplify_geom.wasm', input: path, output: outPath, param: { _tolerance: t } })
       await skillRelay(r, outPath, '简化')
+    } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
+  }
+  async function applyMeasure() {
+    const outPath = 'dsh/output/kanyu-measure-' + Date.now() + '.geojson'
+    setBusy(true); setOut('几何量算中（' + (meaOp === 'area' ? '面积 → _area' : '长度 → _length') + '）…')
+    try {
+      const r = await host.call('skill.run', { skill: 'dsh/skills/measure_geom.wasm', input: path, output: outPath, param: { _measure: meaOp } })
+      await skillRelay(r, outPath, '量算')
     } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
   }
   return h('div', null,
@@ -1359,6 +1368,11 @@ function TabEdit(props) {
     h('div', { className: 'kyg-row' },
       h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: simpTol, placeholder: '简化容差（RDP，地图单位 > 0）', onChange: e => setSimpTol(e.target.value) }),
       h('button', { className: 'kyg-btn', disabled: busy || !path || !simpTol, onClick: applySimplify }, '几何简化')),
+    h('div', { className: 'kyg-row' },
+      h('select', { className: 'kyg-input', style: { maxWidth: '26%' }, value: meaOp, onChange: e => setMeaOp(e.target.value) },
+        h('option', { value: 'area' }, '面积 area（面系 → _area）'),
+        h('option', { value: 'length' }, '长度 length（线系 → _length）')),
+      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: applyMeasure }, '几何量算')),
     h(ResultPre, { text: out }),
   )
 }

@@ -1,5 +1,17 @@
 # dsh/ 组件变更记录
 
+## [0.74.0] — 2026-08-19
+
+- **几何量算 WASM 技能（第七十八轮，技能沙箱第七算子）**：新 guest
+  `measure_geom`——param `_measure: area/length` 逐要素量算写 `_area`/
+  `_length`（shoelace 外环减内环 / 欧氏长度，零依赖纯实现；类型不匹配
+  透传、全不匹配中文报错；平面坐标语义——经纬度请先投影变换）。
+  host.js `kanyu_skill` 清单+param 说明登记；双端 client.js 技能分析区加
+  量算行（area/length 下拉 + skillRelay 接力）。
+- 测试器 216→**219**（+3：面积带洞 96/线透传 + 长度 10 + 缺参中文报错
+  契约）/ static **162** 不变（skillDlgKeys 扩 `applyMeasure`/
+  `measure_geom.wasm`/`kanyu-measure-` 契约键）。
+
 ## [0.73.0] — 2026-08-19
 
 - **目录面板条目过滤（第七十七轮）**：双端 TabCatalog 加过滤框——五分类

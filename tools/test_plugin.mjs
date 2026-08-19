@@ -941,6 +941,36 @@ async function main() {
   check('skill.run 几何简化：param _tolerance 注入 + simplify_geom.wasm RDP 抽稀（锯齿线 11→2 顶点 + _verts 注入 + 点系透传）', sp1.ok && spOk, String(sp1.stderr || sp1.error || '').slice(0, 120));
   const spNoTol = await callRpc('skill.run', { skill: 'dsh/skills/simplify_geom.wasm', input: simpRel });
   check('skill.run 简化校验：缺 param._tolerance 中文报错（guest 契约）', !spNoTol.ok && /未找到简化参数/.test(spNoTol.stderr || ''), String(spNoTol.stderr || '').slice(0, 120));
+
+  // ⑥+++++++++++++++++ 几何量算 WASM 技能（2026-08-19 第七十八轮）：measure_geom guest（shoelace 面积 / 欧氏长度）
+  const meaSrc = path.join(TMP_DIR, 'measure-test.geojson');
+  await fsp.writeFile(meaSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]], [[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]]] }, properties: { name: '带洞方' } },
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[0, 0], [3, 4], [8, 4]] }, properties: { name: '折线' } },
+  ] }));
+  const meaRel = path.relative(REPO_ROOT, meaSrc);
+  const meaOut = path.join(TMP_DIR, 'measure-out.geojson');
+  const me1 = await callRpc('skill.run', { skill: 'dsh/skills/measure_geom.wasm', input: meaRel, output: path.relative(REPO_ROOT, meaOut), param: { _measure: 'area' } });
+  let meOk = false;
+  try {
+    const fs17 = JSON.parse(await fsp.readFile(meaOut, 'utf8')).features;
+    const poly = fs17.find(f => f.properties.name === '带洞方');
+    const line = fs17.find(f => f.properties.name === '折线');
+    meOk = fs17.length === 2 && poly && poly.properties._area === 96
+      && line && line.properties._area === undefined; // 类型不匹配透传不带量算键
+  } catch { /* 断言兜底 */ }
+  check('skill.run 几何量算：param _measure=area + measure_geom.wasm（带洞方 100-4=96 + 线要素不匹配透传）', me1.ok && meOk, String(me1.stderr || me1.error || '').slice(0, 120));
+  const meLenOut = path.join(TMP_DIR, 'measure-len.geojson');
+  const me2 = await callRpc('skill.run', { skill: 'dsh/skills/measure_geom.wasm', input: meaRel, output: path.relative(REPO_ROOT, meLenOut), param: { _measure: 'length' } });
+  let meLenOk = false;
+  try {
+    const fs18 = JSON.parse(await fsp.readFile(meLenOut, 'utf8')).features;
+    const line2 = fs18.find(f => f.properties.name === '折线');
+    meLenOk = line2 && line2.properties._length === 10; // 5 + 5
+  } catch { /* 断言兜底 */ }
+  check('skill.run 几何量算：_measure=length 欧氏长度（折线 5+5=10）', me2.ok && meLenOk, String(me2.stderr || '').slice(0, 120));
+  const meNoOp = await callRpc('skill.run', { skill: 'dsh/skills/measure_geom.wasm', input: meaRel });
+  check('skill.run 量算校验：缺 param._measure 中文报错（guest 契约）', !meNoOp.ok && /未找到量算参数/.test(meNoOp.stderr || ''), String(meNoOp.stderr || '').slice(0, 120));
   }
 
   // ⑦ 3D 地理（能力 7）
@@ -1137,7 +1167,7 @@ async function main() {
     editCutKeys.every((k) => clientSrc.includes(k)),
     editCutKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 技能分析对话框（2026-08-19 第七十轮）：缓冲区/叠加分析 + skillRelay 产图层接力
-  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'applySimplify', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', 'simplify_geom.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-', 'kanyu-simplify-', '裁剪 clip'];
+  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'applySimplify', 'applyMeasure', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', 'simplify_geom.wasm', 'measure_geom.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-', 'kanyu-simplify-', 'kanyu-measure-', '裁剪 clip'];
   check('client.js 技能分析对话框（缓冲区距离 + 叠加算子/第二图层 + skillRelay 接力当前图层）',
     skillDlgKeys.every((k) => clientSrc.includes(k)),
     skillDlgKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
