@@ -21,10 +21,12 @@
 
 // ---------- 常量表（与 kanyu 内核注册表语义对齐） ----------
 
-// 目录扫描识别的 GIS 数据扩展名（对齐 kanyu-core format.rs 注册表 + 工程/存档）
+// 目录扫描识别的 GIS 数据扩展名（对齐 kanyu-core format.rs 注册表 + 工程/存档；
+// gdb = 文件地理数据库，目录形态，walk 内整目录登记；内核零 C 依赖无 GDAL，
+// 读取走 gdbUnsupported 守卫明确报错，不做伪支持）
 const GIS_EXTS = {
   geojson: 1, json: 1, shp: 1, kml: 1, kmz: 1, dxf: 1, dwg: 1, fgb: 1,
-  parquet: 1, csv: 1, tsv: 1, xlsx: 1, kdb: 1, kyu: 1, gpkg: 1, txt: 1,
+  parquet: 1, csv: 1, tsv: 1, xlsx: 1, kdb: 1, kyu: 1, gpkg: 1, txt: 1, gdb: 1,
 }
 
 // 坐标框架快捷表（中国 GIS 常用；EPSG 全库 7507 条检索走 `kanyu crs search`，
@@ -174,6 +176,18 @@ return {
           if (items.length >= 500) break
           if (e.type === 'directory') {
             if (SKIP[e.name]) continue
+            // GDB 文件地理数据库为目录形态（2026-08-19 第九十七轮）：整目录登记为
+            // 数据库条目，不深入扫描（内部是二进制分片，逐文件枚举无意义）
+            if (/\.gdb$/i.test(e.name)) {
+              items.push({
+                path: fs.processPath(e.target),
+                name: e.name,
+                ext: 'gdb',
+                size: null,
+                dir: true,
+              })
+              continue
+            }
             await walk(e.target.displayPath, d - 1)
           } else if (e.type === 'file') {
             const dot = e.name.lastIndexOf('.')
@@ -190,12 +204,23 @@ return {
         }
       }
       await walk(root, maxDepth)
-      // 壳层 catalog.rs 固定五分类（ArcGIS Pro 工程目录范式）的组件语境映射：
-      // 数据库 = .kdb/.kyu 工程/库文件；本机数据 = 其余 GIS 数据文件；
-      // 地图框/布局框/服务链接组件语境暂无对应物，按壳层契约给空态提示。
-      const DB_EXTS = { kdb: 1, kyu: 1 }
+      // ArcGIS Pro 工程目录范式（2026-08-19 第九十七轮由壳层五分类重构为六分类）：
+      // 文件夹连接 = 扫描根；数据库 = .kdb/.kyu 工程库 + .gdb 文件地理数据库目录；
+      // 矢量数据 = 其余 GIS 数据文件（vecGroups 按格式分组，客户端可折叠展示）；
+      // 服务链接 = WFS/WMS 发现；地图框/布局框 = 渲染产物 / .kyu layouts 清单。
+      const DB_EXTS = { kdb: 1, kyu: 1, gdb: 1 }
       const dbItems = items.filter(i => DB_EXTS[i.ext])
       const dataItems = items.filter(i => !DB_EXTS[i.ext])
+      // 矢量数据按格式分组（ArcGIS Pro 目录类型分组语义）
+      const VEC_NAMES = {
+        shp: 'Shapefile', geojson: 'GeoJSON', json: 'JSON', kml: 'KML', kmz: 'KMZ',
+        fgb: 'FlatGeobuf', gpkg: 'GeoPackage', csv: 'CSV', tsv: 'TSV', xlsx: 'Excel',
+        parquet: 'Parquet', dxf: 'DXF', dwg: 'DWG', txt: '文本',
+      }
+      const byExt = {}
+      for (const it of dataItems) (byExt[it.ext] = byExt[it.ext] || []).push(it)
+      const vecGroups = Object.keys(byExt).sort()
+        .map(ext => ({ ext, name: VEC_NAMES[ext] || ext.toUpperCase(), count: byExt[ext].length, items: byExt[ext] }))
       // 地图框 = 会话工作区渲染产物（output/*.png，render.map 落盘——组件语境
       // 无壳层运行时地图框，产物即对应物）；布局框 = 扫描到的 .kyu 工程
       // v2 布局清单（壳层 project.rs layouts 字段，单一事实来源）。
@@ -217,21 +242,33 @@ return {
         } catch (e) { /* 非工程 JSON 跳过 */ }
       }
       const categories = [
+        { name: '文件夹连接', count: 1, placeholder: null },
+        { name: '数据库', count: dbItems.length, placeholder: null },
+        { name: '矢量数据', count: dataItems.length, placeholder: null },
+        { name: '服务链接', count: 0, placeholder: '暂无服务链接——输入基址点「发现图层」（WFS/WMS，对齐壳层 services.rs）' },
         { name: '地图框', count: mapItems.length, placeholder: '暂无渲染产物——地图页签渲染后在此列出' },
         { name: '布局框', count: layoutItems.length, placeholder: '暂无布局——.kyu 工程（v2 起）持久化布局清单后在此列出' },
-        { name: '数据库', count: dbItems.length, placeholder: null },
-        { name: '服务链接', count: 0, placeholder: '暂无服务链接——输入基址点「发现图层」（WFS/WMS，对齐壳层 services.rs）' },
-        { name: '本机数据', count: dataItems.length, placeholder: null },
       ]
-      return { ok: true, root, count: items.length, items, dataItems, dbItems, mapItems, layoutItems, categories }
+      return { ok: true, root, count: items.length, items, dataItems, dbItems, mapItems, layoutItems, vecGroups, categories }
     }
 
     // ------ 能力 2：数据读取（info / query / validate / preview 属性表） ------
+    // GDB 明确报错（2026-08-19 第九十七轮）：内核零 C 依赖无 GDAL，GDB 读取
+    // 不走 CLI 试错，直接返回可操作指引（转换 GeoPackage/Shapefile/GeoJSON）
+    function gdbUnsupported(p) {
+      return /\.gdb([\\/]|$)/i.test(String(p || ''))
+        ? { ok: false, error: 'GDB 文件地理数据库需 GDAL 可选内核支持，当前零依赖内核暂不支持——请转换为 GeoPackage / Shapefile / GeoJSON 后加载' }
+        : null
+    }
     async function dataInfo(path) {
+      const g = gdbUnsupported(path)
+      if (g) return g
       const p = await procPath(path)
       return runKanyu(['data', 'info', '--json', q(p)])
     }
     async function dataQuery(path, filter, output) {
+      const g = gdbUnsupported(path)
+      if (g) return g
       const p = await procPath(path)
       const args = ['data', 'query', '--json', '--filter', q(filter)]
       // kanyu data query --output 底层 std::fs::write 不建父目录，先确保 dsh/output 存在
@@ -240,11 +277,15 @@ return {
       return runKanyu(args)
     }
     async function dataValidate(path) {
+      const g = gdbUnsupported(path)
+      if (g) return g
       const p = await procPath(path)
       return runKanyu(['data', 'validate', '--json', q(p)])
     }
     // 字段计算器（attrcalc 内核出口：表达式逐要素求值写入 target 字段）
     async function dataCalc(path, target, expr, output) {
+      const g = gdbUnsupported(path)
+      if (g) return g
       const p = await procPath(path)
       const args = ['data', 'calc', '--json', '--target', q(target), '--expr', q(expr)]
       if (output) { await ensureOutDir(); args.push('--output', q(await procPath(output))) }
@@ -255,6 +296,8 @@ return {
     // 前 N 行；不经 CLI——--static 模式与无 CLI 环境亦可覆盖；GeoJSON 先行）
     async function dataPreview(path, limit) {
       if (!fs) return { ok: false, error: 'fs service 不可用' }
+      const g = gdbUnsupported(path)
+      if (g) return g
       const p = await procPath(path)
       let fc
       try {
@@ -1513,7 +1556,7 @@ return {
 
     textTool({
       name: 'kanyu_catalog',
-      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回五分类计数与路径/类型/大小清单；给出 url 时走服务链接：仅 url 为 WFS GetCapabilities 图层发现，url+layer 为 GetFeature 拉取落 GeoJSON 图层；xml/data 为离线调试直通（给文本不触网）。',
+      description: '扫描目录下的 GIS 数据文件（geojson/shp/kml/dxf/dwg/fgb/parquet/kdb/kyu 等，对齐内核格式注册表），返回六分类计数（ArcGIS Pro 范式：文件夹连接/数据库/矢量数据（按格式分组）/服务链接/地图框/布局框）与路径/类型/大小清单；给出 url 时走服务链接：仅 url 为 WFS GetCapabilities 图层发现，url+layer 为 GetFeature 拉取落 GeoJSON 图层；xml/data 为离线调试直通（给文本不触网）。',
       parameters: {
         dir: { type: 'string', description: '起始目录（缺省为会话工作区根）' },
         depth: { type: 'number', description: '递归深度（默认 3）' },
@@ -1552,7 +1595,7 @@ return {
         if (!r.ok) return '目录扫描失败: ' + r.error
         const lines = r.items.slice(0, 80).map(i => i.ext.toUpperCase().padEnd(8) + ' ' + (i.size === null ? '-' : Math.round(i.size / 1024) + 'KB').padStart(9) + '  ' + shortPath(i.path))
         const catLine = (r.categories || []).map(c => c.name + ' ' + c.count).join(' · ')
-        return '目录 ' + r.root + ' 共 ' + r.count + ' 个 GIS 数据文件（五分类：' + catLine + '）' + (r.count > 80 ? '（前 80 条）' : '') + ':\n' + lines.join('\n')
+        return '目录 ' + r.root + ' 共 ' + r.count + ' 个 GIS 数据文件（六分类：' + catLine + '）' + (r.count > 80 ? '（前 80 条）' : '') + ':\n' + lines.join('\n')
       },
     })
 

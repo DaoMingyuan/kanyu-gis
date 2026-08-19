@@ -1,5 +1,21 @@
 # dsh/ 组件变更记录
 
+## [0.92.0] — 2026-08-19
+
+- **目录 ArcGIS Pro 化 + GDB/SHP 数据支持（第九十七轮）**：`catalog.list`
+  由壳层五分类重构为 ArcGIS Pro 六分类——文件夹连接/数据库（.kdb/.kyu
+  + .gdb 目录形态整目录登记不深入扫描）/矢量数据（新增 `vecGroups`
+  按格式分组：Shapefile/GeoJSON/GeoPackage 等，客户端子组折叠）/服务
+  链接/地图框/布局框；`GIS_EXTS` 补 `gdb`，`gdbUnsupported` 守卫拦截
+  data info/query/validate/preview/calc——GDB 读取明确报错「需 GDAL
+  可选内核，请转换 GeoPackage/Shapefile/GeoJSON」不走 CLI 试错（内核
+  零 C 依赖基线不做伪支持）。双端 TabCatalog 六分类区（文件夹连接根行
+  + vecSection 格式子组 + GDB 条目点击指引），Dock 重构为「工程图层/
+  数据图层」可折叠分组（grpHead，ArcGIS Pro Contents 范式）。
+  `kanyu_catalog` 工具回执改六分类计数行。测试器 262/262（static
+  205/205，+5），agent-browser 3080 实测六分类渲染、GDB 条目指引、
+  Dock 折叠/展开回环。
+
 ## [0.91.0] — 2026-08-19
 
 - **Dock 工程图层可见性开关（第九十六轮，对齐壳层 toc.rs 复选框语义）**：

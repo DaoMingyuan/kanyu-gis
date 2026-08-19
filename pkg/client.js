@@ -130,7 +130,7 @@ window.__ModuleLoader__.load({
     // ---------- 七页签 ----------
 
     // 目录：GIS 数据目录读取 + 工程目录
-    // 目录：五分类对齐壳层 catalog.rs（地图框/布局框/数据库/服务链接/本机数据）
+    // 目录：六分类 ArcGIS Pro 范式（文件夹连接/数据库/矢量数据（格式分组）/服务链接/地图框/布局框）
     function TabCatalog(props) {
       const store = props.store
       const [dir, setDir] = React.useState('')
@@ -138,7 +138,9 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false)
       const [msg, setMsg] = React.useState('')
       const [open, setOpen] = React.useState({})
-      // 条目过滤（2026-08-19 第七十七轮）：按显示名子串过滤五分类清单
+      // 矢量数据分组折叠态（2026-08-19 第九十七轮，vecGroups 按格式子组）
+      const [gopen, setGopen] = React.useState({})
+      // 条目过滤（2026-08-19 第七十七轮）：按显示名子串过滤分类清单
       // （大小写不敏感；命中数/总数在分类头显示，过滤时全部展开便于命中可见）
       const [flt, setFlt] = React.useState('')
       async function scan() {
@@ -264,8 +266,11 @@ window.__ModuleLoader__.load({
         let rows
         if (cat.name === '数据库') rows = (data.dbItems || []).map(it => (/\.kyu$/i.test(it.path || it.name)
           ? { key: it.path || it.name, ext: 'KYU', text: it.name, size: it.size, onClick: () => loadKyu(it) }
-          : pick(it, it.ext.toUpperCase(), it.name, true)))
-        else if (cat.name === '本机数据') rows = (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
+          : it.ext === 'gdb'
+            ? { key: it.path || it.name, ext: 'GDB', text: it.name, size: null,
+                onClick: () => setMsg('GDB 文件地理数据库需 GDAL 可选内核支持，当前暂不支持——请转换为 GeoPackage / Shapefile / GeoJSON 后加载') }
+            : pick(it, it.ext.toUpperCase(), it.name, true)))
+        else if (cat.name === '文件夹连接') rows = [{ key: 'root', ext: 'DIR', text: data.root, size: null, onClick: undefined }]
         else if (cat.name === '地图框') rows = (data.mapItems || []).map(it => ({ key: it.path || it.name, ext: 'PNG', text: it.name, size: it.size,
           onClick: () => previewMapImage(it) }))
         else if (cat.name === '布局框') rows = (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null,
@@ -274,17 +279,42 @@ window.__ModuleLoader__.load({
         const q = flt.trim().toLowerCase()
         return q ? rows.filter(r => String(r.text).toLowerCase().includes(q)) : rows
       }
+      // 矢量数据分类：vecGroups 按格式子组折叠渲染（第九十七轮 ArcGIS Pro 目录范式；
+      // 过滤时命中组强制展开，组头显示命中/总数）
+      function vecSection() {
+        const groups = (data && data.vecGroups) || []
+        if (!groups.length) return h('div', { className: 'kyg-hint' }, '（空）')
+        const q = flt.trim().toLowerCase()
+        return groups.map(g => {
+          const rows = q ? g.items.filter(it => String(it.name).toLowerCase().includes(q)) : g.items
+          if (q && !rows.length) return null
+          const isOpen = q ? true : gopen[g.ext] !== undefined ? gopen[g.ext] : true
+          return h('div', { key: g.ext },
+            h('div', { className: 'kyg-cat-head', style: { paddingLeft: '14px' }, onClick: () => setGopen(Object.assign({}, gopen, { [g.ext]: !isOpen })) },
+              h('span', { className: 'arr' }, isOpen ? '▾' : '▸'),
+              h('span', null, g.name + '（.' + g.ext + '）'),
+              h('span', { className: 'ct' }, q ? rows.length + '/' + g.count : g.count)),
+            isOpen && rows.map((it, i) => h('div', {
+              key: i, className: 'kyg-list-item',
+              onClick: () => { store.path = it.path; props.notify() },
+            },
+              h('span', { className: 'ext' }, String(it.ext || '').toUpperCase()),
+              h('span', null, it.name),
+              h('span', { className: 'sz' }, it.size === null || it.size === undefined ? '' : Math.round(it.size / 1024) + 'KB'))))
+        })
+      }
       function catSection(cat) {
         const rows = catRows(cat)
-        // 壳层契约：默认仅「本机数据」展开；过滤中强制展开（命中可见）
+        // 默认仅「矢量数据」展开；过滤中强制展开（命中可见）
         const isOpen = flt.trim() ? true
-          : open[cat.name] !== undefined ? open[cat.name] : cat.name === '本机数据'
+          : open[cat.name] !== undefined ? open[cat.name] : cat.name === '矢量数据'
         return h('div', { key: cat.name },
           h('div', { className: 'kyg-cat-head', onClick: () => setOpen(Object.assign({}, open, { [cat.name]: !isOpen })) },
             h('span', { className: 'arr' }, isOpen ? '▾' : '▸'),
             h('span', null, cat.name),
-            h('span', { className: 'ct' }, flt.trim() && cat.name !== '服务链接' ? rows.length + '/' + cat.count : cat.count)),
+            h('span', { className: 'ct' }, flt.trim() && cat.name !== '服务链接' && cat.name !== '矢量数据' ? rows.length + '/' + cat.count : cat.count)),
           isOpen && (cat.name === '服务链接' ? svcSection()
+            : cat.name === '矢量数据' ? vecSection()
             : rows.length ? rows.map((r, i) => h('div', {
                 key: i, className: 'kyg-list-item',
                 style: r.onClick ? undefined : { cursor: 'default' },
@@ -299,7 +329,7 @@ window.__ModuleLoader__.load({
         Field('目录', h('input', { className: 'kyg-input', value: dir, placeholder: '缺省 = 会话工作区根', onChange: e => setDir(e.target.value) })),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn', disabled: busy, onClick: scan }, '扫描'),
-          h('input', { className: 'kyg-input', style: { maxWidth: '34%' }, value: flt, placeholder: '过滤条目名（五分类清单）', onChange: e => setFlt(e.target.value) }),
+          h('input', { className: 'kyg-input', style: { maxWidth: '34%' }, value: flt, placeholder: '过滤条目名（分类/分组清单）', onChange: e => setFlt(e.target.value) }),
           store.path ? h('span', { className: 'kyg-sel' }, '当前图层: ' + store.path) : null),
         h('div', { className: 'kyg-hint' }, msg),
         data && data.categories && data.categories.map(catSection),
@@ -2086,31 +2116,41 @@ h('div', { className: 'kyg-hint' }, msg),
           knownRef.current = store.path
           scan()
         }, [store.path])
+        // 分组折叠（2026-08-19 第九十七轮，ArcGIS Pro Contents 范式）：
+        // 工程图层 / 数据图层 两组可折叠，组头带计数；默认均展开
+        const [grp, setGrp] = React.useState({ lyr: true, data: true })
+        function grpHead(key, label, count) {
+          return h('div', { className: 'kyg-dock-head', style: { cursor: 'pointer', marginTop: key === 'data' ? '6px' : 0 },
+            onClick: () => setGrp(Object.assign({}, grp, { [key]: !grp[key] })) },
+            h('span', null, (grp[key] ? '▾ ' : '▸ ') + label),
+            h('span', { style: { fontSize: '11px', fontWeight: 400, opacity: .7 } }, count))
+        }
+        const kyuLays = (store.kyuProject && store.kyuProject.layers) || []
         return h('div', { className: 'kyg-dock' },
           h('div', { className: 'kyg-dock-head' },
             h('span', null, '图层'),
             h('button', { className: 'kyg-btn kyg-btn-sub', style: { padding: '1px 8px', fontSize: '11px' }, onClick: scan }, '刷新')),
           msg ? h('div', { className: 'kyg-hint' }, msg) : null,
-          (items || []).map((it, i) => h('div', {
+          grpHead('lyr', '工程图层' + (store.kyuProject ? '（' + (store.kyuProject.name || String(store.kyuProject.kyu).split(/[\\/]/).pop()) + '）' : ''), kyuLays.length),
+          grp.lyr ? (kyuLays.length ? kyuLays.map((l, i) => h('div', {
+            key: 'kyu' + i,
+            className: 'kyg-list-item' + (store.path === l.source ? ' kyg-list-item-active' : ''),
+            onClick: () => { store.path = l.source; store.sym = l.style; store.kyu = store.kyuProject.kyu; store.layerId = l.id; props.notify() },
+          },
+            h('input', { type: 'checkbox', checked: l.visible, title: '可见性（写回 .kyu）', onClick: e => e.stopPropagation(), onChange: e => toggleVis(l, e.target.checked) }),
+            h('span', { className: 'ext' }, l.visible ? '图层' : '隐藏'),
+            h('span', null, l.id + (l.styleMode ? ' · ' + l.styleMode : ''))))
+            : h('div', { className: 'kyg-hint' }, '（未载入 .kyu 工程——顶栏选择或目录页签加载）')) : null,
+          grpHead('data', '数据图层', (items || []).length),
+          grp.data ? (items || []).map((it, i) => h('div', {
             key: i,
             className: 'kyg-list-item' + (store.path === it.path ? ' kyg-list-item-active' : ''),
             onClick: () => { store.path = it.path; props.notify() },
           },
             h('span', { className: 'ext' }, String(it.ext || '').toUpperCase()),
-            h('span', null, it.name))),
-          items && items.length === 0
-            ? h('div', { className: 'kyg-hint' }, '（无本机数据图层——目录页签扫描或服务拉取）') : null,
-          store.kyuProject && store.kyuProject.layers && store.kyuProject.layers.length ? h('div', null,
-            h('div', { className: 'kyg-dock-head', style: { marginTop: '6px' } },
-              h('span', null, '工程: ' + (store.kyuProject.name || String(store.kyuProject.kyu).split(/[\\/]/).pop()))),
-            store.kyuProject.layers.map((l, i) => h('div', {
-              key: 'kyu' + i,
-              className: 'kyg-list-item' + (store.path === l.source ? ' kyg-list-item-active' : ''),
-              onClick: () => { store.path = l.source; store.sym = l.style; store.kyu = store.kyuProject.kyu; store.layerId = l.id; props.notify() },
-            },
-              h('input', { type: 'checkbox', checked: l.visible, title: '可见性（写回 .kyu）', onClick: e => e.stopPropagation(), onChange: e => toggleVis(l, e.target.checked) }),
-              h('span', { className: 'ext' }, l.visible ? '图层' : '隐藏'),
-              h('span', null, l.id + (l.styleMode ? ' · ' + l.styleMode : ''))))) : null)
+            h('span', null, it.name))) : null,
+          grp.data && items && items.length === 0
+            ? h('div', { className: 'kyg-hint' }, '（无数据图层——目录页签扫描或服务拉取）') : null)
       }
 
       function Workbench() {

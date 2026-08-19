@@ -262,13 +262,30 @@ async function main() {
   const exts = new Set((cat.items || []).map((i) => i.ext));
   check('catalog.list：扫描 ' + CATALOG_DIR + '/ 检出 geojson（GIS 扩展名矩阵过滤）', cat.ok && cat.count >= 1 && exts.has('geojson'),
     'count=' + cat.count + ' exts=' + [...exts].join(','));
-  // 五分类（壳层 catalog.rs 范式，两种模式皆覆盖；2026-08-18 第十四轮）
+  // 六分类（ArcGIS Pro 工程目录范式，两种模式皆覆盖；2026-08-19 第九十七轮由五分类重构）
   const catNames = (cat.categories || []).map((c) => c.name);
-  check('catalog.list：五分类对齐壳层 catalog.rs（地图框/布局框/数据库/服务链接/本机数据 + kyu 入数据库类）',
-    catNames.join(',') === '地图框,布局框,数据库,服务链接,本机数据'
+  check('catalog.list：六分类 ArcGIS Pro 范式（文件夹连接/数据库/矢量数据/服务链接/地图框/布局框 + kyu 入数据库类）',
+    catNames.join(',') === '文件夹连接,数据库,矢量数据,服务链接,地图框,布局框'
       && (cat.dbItems || []).some((i) => i.ext === 'kyu')
       && (cat.dataItems || []).every((i) => i.ext !== 'kdb' && i.ext !== 'kyu'),
     'cats=' + catNames.join('/') + ' db=' + (cat.dbItems || []).length + ' data=' + (cat.dataItems || []).length);
+  // 矢量数据格式分组（第九十七轮）：vecGroups 计数守恒 + geojson 组在列
+  const vecSum = (cat.vecGroups || []).reduce((n, g) => n + g.count, 0);
+  check('catalog.list：vecGroups 按格式分组（计数守恒 = dataItems 总数 + geojson 组在列）',
+    Array.isArray(cat.vecGroups) && vecSum === (cat.dataItems || []).length
+      && (cat.vecGroups || []).some((g) => g.ext === 'geojson' && g.name === 'GeoJSON'),
+    'groups=' + (cat.vecGroups || []).map((g) => g.ext + ':' + g.count).join(','));
+  // GDB 目录登记（第九十七轮）：sample.gdb 夹具整目录入数据库类、不深入扫描
+  const gdbItem = (cat.items || []).find((i) => i.ext === 'gdb');
+  check('catalog.list：.gdb 目录整目录登记（入 dbItems + 不深入扫描内部文件）',
+    !!gdbItem && gdbItem.dir === true && (cat.dbItems || []).some((i) => i.ext === 'gdb')
+      && !(cat.items || []).some((i) => /sample\.gdb[\\/]/.test(i.path)),
+    'gdb=' + (gdbItem && gdbItem.path));
+  // GDB 读取明确报错（第九十七轮）：data.info 守卫拦截，不走 CLI 试错（两模式皆覆盖）
+  const gdbInfo = await callRpc('data.info', { path: 'sample.gdb' });
+  check('data.info：GDB 路径明确报错（GDAL 可选内核指引，不走 CLI 试错）',
+    gdbInfo.ok === false && /GDAL/.test(gdbInfo.error || ''),
+    'err=' + String(gdbInfo && gdbInfo.error).slice(0, 60));
   // 地图框/布局框组件语境对应物（2026-08-18 第二十轮）：渲染产物 + .kyu layouts 清单
   const catCounts = {};
   for (const c of cat.categories || []) catCounts[c.name] = c.count;
@@ -1169,12 +1186,17 @@ async function main() {
   check('client.js 目录 .kyu 图层接力地图页签（style.list + pickKyuLayer + symRef 回填）',
     kyuLinkKeys.every((k) => clientSrc.includes(k)),
     kyuLinkKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
-  // 目录页签五分类（2026-08-18 第十四/二十轮）：分类头 + 数据库/本机数据/地图框/布局框分离
-  // + 条目过滤（第七十七轮：flt/setFlt 过滤框 + 过滤中强制展开 + 命中/总计数）
-  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '本机数据', 'setFlt', '过滤条目名（五分类清单）', 'rows.filter'];
-  check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
+  // 目录页签六分类（2026-08-19 第九十七轮 ArcGIS Pro 化）：分类头 + 数据库/矢量数据分组/地图框/布局框分离
+  // + 条目过滤（第七十七轮）+ vecGroups 子组折叠（vecSection/gopen）
+  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '矢量数据', 'vecGroups', 'vecSection', 'setFlt', '过滤条目名（分类/分组清单）', 'rows.filter'];
+  check('client.js 目录页签六分类区（kyg-cat-head + vecGroups 子组折叠）',
     catKeys.every((k) => clientSrc.includes(k)),
     catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // Dock 分组折叠（第九十七轮 ArcGIS Pro Contents 范式）：工程图层/数据图层组头
+  const dockGrpKeys = ['grpHead', 'setGrp', '工程图层', '数据图层'];
+  check('client.js Dock 分组折叠（grpHead + 工程图层/数据图层）',
+    dockGrpKeys.every((k) => clientSrc.includes(k)),
+    dockGrpKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 目录页签 freshness 自动重扫（2026-08-18 第三十九轮）：清单外新当前图层触发 scan
   const freshKeys = ['freshness 自动重扫', 'knownRef'];
   check('client.js 目录页签 freshness 自动重扫（清单外新图层触发 + knownRef 防重复）',
@@ -1441,9 +1463,12 @@ async function main() {
   check('pkg/client.js 目录 .kyu 图层接力地图页签（与动态半同契约）',
     kyuLinkKeys.every((k) => pkgClientSrc.includes(k)),
     kyuLinkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
-  check('pkg/client.js 目录页签五分类区（与动态半同契约）',
+  check('pkg/client.js 目录页签六分类区（与动态半同契约）',
     catKeys.every((k) => pkgClientSrc.includes(k)),
     catKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js Dock 分组折叠（与动态半同契约）',
+    dockGrpKeys.every((k) => pkgClientSrc.includes(k)),
+    dockGrpKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 目录页签 freshness 自动重扫（与动态半同契约）',
     freshKeys.every((k) => pkgClientSrc.includes(k)),
     freshKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
