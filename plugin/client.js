@@ -44,6 +44,7 @@ const CSS = `
 .kyg-pre{background:rgba(0,0,0,.35);border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.5;
   white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto;margin:6px 0;font-family:Consolas,monospace}
 .kyg-img{max-width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.12);margin-top:6px}
+.kyg-map-stage{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px;padding:6px;text-align:center}
 .kyg-canvas{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px}
 .kyg-list-item{padding:5px 8px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:baseline}
 .kyg-list-item:hover{background:rgba(255,255,255,.07)}
@@ -185,7 +186,7 @@ function TabCatalog(props) {
     } catch (e) { setMapImgMsg('RPC 失败: ' + (e && e.message || e)) }
   }
   function svcSection() {
-    return h('div', null,
+    return h('div', { ref: stageRef },
       h('div', { className: 'kyg-row' },
         h('input', { className: 'kyg-input', value: svcUrl, placeholder: 'WFS/WMS 服务基址，如 https://example.com/wfs', onChange: e => setSvcUrl(e.target.value) }),
         h('button', { className: 'kyg-btn', disabled: svcBusy || !svcUrl, onClick: discover }, '发现图层')),
@@ -446,17 +447,29 @@ function TabMap(props) {
     if (store.kyu) setKyuPath(store.kyu)
     if (store.layerId) setLayerId(store.layerId)
   }, [store.sym, store.kyu, store.layerId, store.path])
+  // 舞台量宽渲染（第八十二轮 全屏画布化）：按中央区实际宽度出图，铺满工作台
+  const stageRef = React.useRef(null)
   async function render2d(p) {
     const usePath = p || path
     const sym = buildSymbology(symMethod, symField, symSpec, singleColor, otherColor, ramp)
     if (sym && sym.error) { setMsg('符号化参数: ' + sym.error); return }
+    const cw = stageRef.current ? stageRef.current.clientWidth - 28 : 0
+    const w = Math.max(480, Math.min(1600, cw || 760))
     setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
     try {
-      const r = await host.call('render.map', { path: usePath, theme, width: 760, height: 520, symbology: sym })
+      const r = await host.call('render.map', { path: usePath, theme, width: w, height: Math.round(w * 0.62), symbology: sym })
       if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')) }
       else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
+  }
+  // 导出地图图片：当前渲染图（dataURL）落盘下载 PNG
+  function exportPng() {
+    if (!img) return
+    const a = document.createElement('a')
+    a.href = img
+    a.download = (path ? String(path).split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : 'kanyu-map') + '.png'
+    document.body.appendChild(a); a.click(); a.remove()
   }
   // 工程样式读写（style.get/style.set RPC，第五十二轮）：读取回填表单 /
   // 写入 .kyu 图层 style（LayerSymbology JSON，壳层工程属性页同语义）
@@ -497,6 +510,13 @@ function TabMap(props) {
     a.path = store.path; a.rev = store.rev
     if (store.path) render2d(store.path)
   }, [store.path, store.rev, img])
+  // 入场自动出图（第八十二轮）：带当前图层进入地图页签即渲染，无需手动点「渲染」
+  const firstRef = React.useRef(false)
+  React.useEffect(() => {
+    if (firstRef.current || !store.path) return
+    firstRef.current = true
+    render2d(store.path)
+  }, [store.path])
   return h('div', null,
     Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
     h('div', { className: 'kyg-row' },
@@ -509,7 +529,8 @@ function TabMap(props) {
         h('option', { value: 'single' }, '单色 (single)'),
         h('option', { value: 'categorical' }, '唯一值 (categorical)'),
         h('option', { value: 'graduated' }, '分级 (graduated)')),
-      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染')),
+      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染'),
+      img ? h('button', { className: 'kyg-btn kyg-btn-sub', title: '下载当前渲染图 PNG', onClick: exportPng }, '导出地图图片') : null),
     symMethod === 'single' ? h('div', { className: 'kyg-row' },
       h('span', { className: 'kyg-label' }, '颜色'),
       h('input', { type: 'color', className: 'kyg-input', value: singleColor, onChange: e => setSingleColor(e.target.value) })) : null,
@@ -526,7 +547,7 @@ function TabMap(props) {
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath, onClick: styleLoad }, '读取样式'),
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
     h('div', { className: 'kyg-hint' }, msg),
-    img ? h('img', { className: 'kyg-img', src: img, alt: '地图渲染' }) : null,
+    img ? h('div', { className: 'kyg-map-stage' }, h('img', { className: 'kyg-img', src: img, alt: '地图渲染' })) : null,
   )
 }
 

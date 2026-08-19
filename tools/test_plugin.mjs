@@ -1066,6 +1066,10 @@ async function main() {
   check('client.js 激活即自动展开工作台（autoOpened 一次性联动，与静态半同 UX）',
     clientSrc.includes('autoOpened') && clientSrc.includes('store.open = true; notify()'));
   const fullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
+  const mapStageKeys = ['stageRef', 'firstRef', 'kyg-map-stage', '导出地图图片', 'exportPng'];
+  check('client.js 地图页签画布化（舞台量宽渲染 + 入场自动出图 + 导出地图图片）',
+    mapStageKeys.every((k) => clientSrc.includes(k)),
+    mapStageKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     fullKeys.every((k) => clientSrc.includes(k)),
     fullKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1256,6 +1260,10 @@ async function main() {
     linkKeys.every((k) => pkgClientSrc.includes(k)),
     linkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   const pkgFullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
+  const pkgMapStageKeys = ['stageRef', 'firstRef', 'kyg-map-stage', '导出地图图片', 'exportPng'];
+  check('pkg/client.js 地图页签画布化（舞台量宽渲染 + 入场自动出图 + 导出地图图片）',
+    pkgMapStageKeys.every((k) => pkgClientSrc.includes(k)),
+    pkgMapStageKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
