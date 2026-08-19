@@ -1070,6 +1070,13 @@ async function main() {
   check('client.js 地图页签画布化（舞台量宽渲染 + 入场自动出图 + 导出地图图片）',
     mapStageKeys.every((k) => clientSrc.includes(k)),
     mapStageKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 状态栏真实数据（2026-08-19 第八十三轮）：render.map 成功后 data.info 取
+  // 要素计数/范围 → approxScale 推算近似比例尺 + 格式推断坐标系 → store.mapInfo 上状态栏；
+  // 编辑页签框选顶点/属性表选中行 → store.selVerts/selFeature 实时发布
+  const statusKeys = ['approxScale', 'publishMapInfo', 'store.mapInfo', 'store.selVerts', 'store.selFeature', '要素: ', '坐标系: ', '比例尺≈1:'];
+  check('client.js 状态栏真实数据（要素计数/坐标系/比例尺/选择计数 → store 发布）',
+    statusKeys.every((k) => clientSrc.includes(k)),
+    statusKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     fullKeys.every((k) => clientSrc.includes(k)),
     fullKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1264,6 +1271,9 @@ async function main() {
   check('pkg/client.js 地图页签画布化（舞台量宽渲染 + 入场自动出图 + 导出地图图片）',
     pkgMapStageKeys.every((k) => pkgClientSrc.includes(k)),
     pkgMapStageKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 状态栏真实数据（与动态半同契约）',
+    statusKeys.every((k) => pkgClientSrc.includes(k)),
+    statusKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

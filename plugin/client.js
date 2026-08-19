@@ -415,6 +415,18 @@ function symToForm(sym) {
   return null
 }
 
+// 近似比例尺（第八十三轮）：范围宽 ÷ 图像物理宽（96dpi ≈ 0.28mm/px）；
+// 经纬度（四值均在度数域内）按中心纬度换算地面米宽，投影坐标按米直读
+function approxScale(extent, widthPx) {
+  if (!extent || extent.length !== 4 || !widthPx) return 0
+  const dx = extent[2] - extent[0]
+  if (!(dx > 0)) return 0
+  const deg = Math.abs(extent[0]) <= 180 && Math.abs(extent[2]) <= 180 && Math.abs(extent[1]) <= 90 && Math.abs(extent[3]) <= 90
+  const ground = deg ? dx * 111320 * Math.cos((extent[1] + extent[3]) / 2 * Math.PI / 180) : dx
+  const scale = ground / (widthPx * 0.00028)
+  return scale > 0 ? Math.round(scale) : 0
+}
+
 function TabMap(props) {
   const store = props.store
   const [path, setPath] = React.useState(store.path)
@@ -458,7 +470,7 @@ function TabMap(props) {
     setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
     try {
       const r = await host.call('render.map', { path: usePath, theme, width: w, height: Math.round(w * 0.62), symbology: sym })
-      if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')) }
+      if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')); publishMapInfo(usePath, w) }
       else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
@@ -470,6 +482,22 @@ function TabMap(props) {
     a.href = img
     a.download = (path ? String(path).split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : 'kanyu-map') + '.png'
     document.body.appendChild(a); a.click(); a.remove()
+  }
+  // 状态栏数据发布（第八十三轮）：渲染成功即取 data.info（要素计数/范围），
+  // 坐标系按格式推断（GeoJSON 遵循 RFC 7946 = EPSG:4326，其余内核不追踪记未声明），
+  // 比例尺由 approxScale（范围宽 × 图像像素宽）推算；结果上 store.mapInfo 驱动状态栏
+  function publishMapInfo(p, w) {
+    host.call('data.info', { path: p }).then(ir => {
+      try {
+        const j = JSON.parse((ir && ir.stdout) || '{}')
+        store.mapInfo = {
+          count: j.feature_count != null ? j.feature_count : null,
+          crs: /geojson/i.test(String(j.format || '')) ? 'EPSG:4326' : '未声明',
+          scale: approxScale(j.extent, w),
+        }
+      } catch (e) { store.mapInfo = null }
+      if (props.notify) props.notify()
+    }).catch(() => {})
   }
   // 工程样式读写（style.get/style.set RPC，第五十二轮）：读取回填表单 /
   // 写入 .kyu 图层 style（LayerSymbology JSON，壳层工程属性页同语义）
@@ -909,6 +937,9 @@ function TabEdit(props) {
   // 点选行 → 字段/新值 → edit.apply attribute-set
   const [attrs, setAttrs] = React.useState(null)
   const [attrIdx, setAttrIdx] = React.useState(-1)
+  // 选择计数上状态栏（第八十三轮）：框选顶点集 / 属性表选中行实时发布到 store
+  React.useEffect(() => { store.selVerts = selN; if (props.notify) props.notify() }, [selN])
+  React.useEffect(() => { store.selFeature = attrIdx; if (props.notify) props.notify() }, [attrIdx])
   const [attrField, setAttrField] = React.useState('')
   const [attrValue, setAttrValue] = React.useState('')
   async function loadAttrs() {
@@ -1678,7 +1709,7 @@ return {
     styles.insert(CSS)
 
     // ------ 包级共享状态（头部按钮 ↔ 全屏工作台 ↔ cordis 卡片） ------
-    const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '' }
+    const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, selVerts: 0, selFeature: -1 }
     const listeners = new Set()
     function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
     function useStore() {
@@ -1784,6 +1815,11 @@ return {
         h('div', { className: 'kyg-status' },
           h('span', null, '页签: ' + cur.name),
           base ? h('span', null, '当前图层: ' + base) : h('span', null, '未选图层'),
+          s.mapInfo && s.mapInfo.count != null ? h('span', null, '要素: ' + s.mapInfo.count) : null,
+          s.mapInfo ? h('span', null, '坐标系: ' + s.mapInfo.crs) : null,
+          s.mapInfo && s.mapInfo.scale ? h('span', { title: '按范围宽与图像像素宽推算（96dpi ≈ 0.28mm/px）' }, '比例尺≈1:' + Number(s.mapInfo.scale).toLocaleString()) : null,
+          s.selVerts > 0 ? h('span', null, '已选顶点: ' + s.selVerts) : null,
+          s.selFeature >= 0 ? h('span', null, '选中要素 #' + s.selFeature) : null,
           h('span', null, '模式: GIS（kanyu-gis）')),
       )
     }
