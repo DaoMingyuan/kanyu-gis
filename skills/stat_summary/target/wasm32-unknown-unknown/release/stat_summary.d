@@ -1,0 +1,1 @@
+E:\BaiduSyncdisk\堪舆GIS\dsh\skills\stat_summary\target\wasm32-unknown-unknown\release\stat_summary.wasm: \\?\E:\BaiduSyncdisk\堪舆GIS\crates\kanyu-skill\wit\skill.wit E:\BaiduSyncdisk\堪舆GIS\dsh\skills\stat_summary\src\lib.rs

@@ -1063,6 +1063,8 @@ async function main() {
   const slotsOk = ['conversation.session.header.actions', 'shell.overlay', 'tool.view.cordis']
     .every((s) => clientSrc.includes(s));
   check('client.js 三处 slot 注册', slotsOk);
+  check('client.js 激活即自动展开工作台（autoOpened 一次性联动，与静态半同 UX）',
+    clientSrc.includes('autoOpened') && clientSrc.includes('store.open = true; notify()'));
   const tabsOk = ['catalog', 'data', 'map', 'crs', 'gp', 'edit', 'scene3d', 'about']
     .every((t) => clientSrc.includes(`id: '${t}'`));
   check('client.js 七能力页签 + 关于', tabsOk);
@@ -1245,6 +1247,10 @@ async function main() {
   check('pkg/client.js 两处 slot 注册且无 tool.view.cordis（动态包专利）', pkgSlotsOk);
   check('pkg/client.js preset 门控（agentPreset 快照 + kanyu-gis 字面量）',
     pkgClientSrc.includes('agentPreset') && pkgClientSrc.includes(`'kanyu-gis'`));
+  const linkKeys = ['prevGis', 'store.open = true; notify()', 'store.open = false; notify()'];
+  check('pkg/client.js preset 联动：切入自动展开/切出自动收起（转换边）',
+    linkKeys.every((k) => pkgClientSrc.includes(k)),
+    linkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   const dialectClean = !pkgClientSrc.includes('host.call(') && !pkgClientSrc.includes('styles.insert(');
   check('pkg/client.js 无动态沙箱符号调用（host.call(/styles.insert(）', dialectClean);
   check('pkg/client.js 3D 管线对齐内核 scene3d.rs（与动态半同契约）',

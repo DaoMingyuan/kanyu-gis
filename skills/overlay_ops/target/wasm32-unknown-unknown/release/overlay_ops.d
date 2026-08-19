@@ -1,0 +1,1 @@
+E:\BaiduSyncdisk\堪舆GIS\dsh\skills\overlay_ops\target\wasm32-unknown-unknown\release\overlay_ops.wasm: \\?\E:\BaiduSyncdisk\堪舆GIS\crates\kanyu-skill\wit\skill.wit E:\BaiduSyncdisk\堪舆GIS\dsh\skills\overlay_ops\src\lib.rs

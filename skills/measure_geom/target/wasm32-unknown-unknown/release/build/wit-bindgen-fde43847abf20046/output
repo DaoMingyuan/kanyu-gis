@@ -1,0 +1,2 @@
+cargo:rustc-link-lib=static=wit_bindgen_cabi0_60_0
+cargo:rustc-link-search=native=E:\BaiduSyncdisk\堪舆GIS\dsh\skills\measure_geom\target\wasm32-unknown-unknown\release\build\wit-bindgen-fde43847abf20046\out

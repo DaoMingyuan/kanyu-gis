@@ -1666,6 +1666,12 @@ return {
     function Workbench() {
       const s = useStore()
       const [tab, setTab] = React.useState('catalog')
+      // 激活即自动展开一次：动态包仅在 kanyu-gis 组合下加载，
+      // 加载本身即「切入 GIS 模式」——与静态半（pkg/client.js prevGis 转换边）同 UX
+      const autoOpened = React.useRef(false)
+      React.useEffect(() => {
+        if (!autoOpened.current && !store.open) { autoOpened.current = true; store.open = true; notify() }
+      }, [])
       if (!s.open) return null
       const cur = TABS.find(t => t.id === tab) || TABS[0]
       return h('div', { className: 'kyg-panel' },

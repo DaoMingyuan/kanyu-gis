@@ -1,0 +1,1 @@
+E:\BaiduSyncdisk\堪舆GIS\dsh\skills\split_polygons\target\wasm32-unknown-unknown\release\split_polygons.wasm: \\?\E:\BaiduSyncdisk\堪舆GIS\crates\kanyu-skill\wit\skill.wit E:\BaiduSyncdisk\堪舆GIS\dsh\skills\split_polygons\src\lib.rs

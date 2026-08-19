@@ -1,0 +1,1 @@
+E:\BaiduSyncdisk\堪舆GIS\dsh\skills\simplify_geom\target\wasm32-unknown-unknown\release\simplify_geom.wasm: \\?\E:\BaiduSyncdisk\堪舆GIS\crates\kanyu-skill\wit\skill.wit E:\BaiduSyncdisk\堪舆GIS\dsh\skills\simplify_geom\src\lib.rs

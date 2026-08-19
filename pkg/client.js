@@ -13,9 +13,10 @@
 //     改为同源 fetch POST /kanyu-gis/call，由 Host 半（pkg/index.js）经
 //     webServer 前缀路由桥到同一张 RPC 表；
 //   · 无 tool.view.cordis 卡片（key:'self' 改写只发生在动态 guard 里）；
-//   · preset 门控：读 sessions 快照的 agentPreset 字段（一等字段，
-//     SessionSummary.agentPreset），仅 kanyu-gis 会话渲染头部按钮与工作台——
-//     「切换到 GIS 模式时面板联动加载」即此门控（切走即隐藏）。
+//   · preset 门控 + 联动：读 sessions 快照的 agentPreset 字段（一等字段，
+//     SessionSummary.agentPreset），仅 kanyu-gis 会话渲染头部按钮与工作台；
+//     切入 kanyu-gis 的转换边自动展开工作台、切出自动收起（首页/新会话视图
+//     无会话头部槽位，联动展开是「切 GIS 模式界面随之变化」的可靠通路）。
 // ============================================================================
 window.__ModuleLoader__.load({
   id: 'kanyu-gis-dsh-plugin',
@@ -1724,6 +1725,15 @@ window.__ModuleLoader__.load({
         const s = useStore()
         const gis = useGisMode()
         const [tab, setTab] = React.useState('catalog')
+        // preset 联动：切入 kanyu-gis 自动展开工作台、切出自动收起（转换边触发，
+        // 用户在 GIS 模式下手动关闭后不反复弹出；首页/新会话视图无会话头部槽位，
+        // 此联动是「切 GIS 模式界面随之变化」的唯一可靠通路）
+        const prevGis = React.useRef(false)
+        React.useEffect(() => {
+          if (gis && !prevGis.current && !store.open) { store.open = true; notify() }
+          if (!gis && prevGis.current && store.open) { store.open = false; notify() }
+          prevGis.current = gis
+        }, [gis])
         if (!gis || !s.open) return null
         const cur = TABS.find(t => t.id === tab) || TABS[0]
         return h('div', { className: 'kyg-panel' },
