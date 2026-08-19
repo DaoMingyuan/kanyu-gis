@@ -4,12 +4,14 @@
 //! - 首条 `properties._role == "param"` 要素携带 `_op`：
 //!   `"intersect"`（相交——基准面 × 叠加面两两交集，基准属性继承）/
 //!   `"union"`（合并——两图层全部面合并为整体，按部输出）/
-//!   `"difference"`（差集——基准面减去叠加面整体，基准属性继承）；
+//!   `"difference"`（差集——基准面减去叠加面整体，基准属性继承）/
+//!   `"clip"`（裁剪——基准面 × 叠加整体一次性交集，ArcGIS Clip 语义：
+//!   不两两配对、叠加属性不入产出，基准属性继承，一部一基准要素）；
 //! - `properties._role == "overlay"` 要素为叠加层（host 从第二输入文件注入）；
 //! - 其余为基准层要素；仅 Polygon / MultiPolygon 参与叠加，参数要素不带入输出。
 //!
 //! 算法（geo 0.33）：`geo::BooleanOps`（intersection/union/difference），
-//! 叠加层先合并为整体再参与差集；交集两两配对逐部输出。
+//! 叠加层先合并为整体再参与差集/裁剪；交集两两配对逐部输出。
 //!
 //! 构建（生成 ../overlay_ops.wasm）：
 //!   cargo build --target wasm32-unknown-unknown --release \
@@ -74,10 +76,10 @@ fn read_op(features: &[serde_json::Value]) -> Result<&str, String> {
         let op = props
             .and_then(|p| p.get("_op"))
             .and_then(|v| v.as_str())
-            .ok_or_else(|| "参数要素缺少 _op（intersect/union/difference）".to_string())?;
+            .ok_or_else(|| "参数要素缺少 _op（intersect/union/difference/clip）".to_string())?;
         return match op {
-            "intersect" | "union" | "difference" => Ok(op),
-            _ => Err(format!("不支持的叠加算子 \"{op}\"（支持 intersect/union/difference）")),
+            "intersect" | "union" | "difference" | "clip" => Ok(op),
+            _ => Err(format!("不支持的叠加算子 \"{op}\"（支持 intersect/union/difference/clip）")),
         };
     }
     Err("未找到叠加参数（properties._role=\"param\" 且含 _op 的要素）".to_string())
@@ -181,6 +183,20 @@ impl exports::kanyu::skill::analyzer::Guest for OverlayOps {
                     return Err("叠加结果为空".to_string());
                 }
                 push_parts(&mut out_features, None, &all);
+            }
+            "clip" => {
+                // 裁剪（ArcGIS Clip 语义）：基准面整体 ∩ 叠加整体——不两两配对，
+                // 叠加属性不入产出，一部一基准要素（多部附 _part）。
+                for (i, bmp) in &base {
+                    let src_props = features[*i].get("properties");
+                    let inter = bmp.intersection(&overlay_union);
+                    if !inter.0.is_empty() {
+                        push_parts(&mut out_features, src_props, &inter);
+                    }
+                }
+                if out_features.is_empty() {
+                    return Err("裁剪结果为空（基准面与裁剪模子无相交区域）".to_string());
+                }
             }
             _ => {
                 // difference：基准面逐面减去叠加整体

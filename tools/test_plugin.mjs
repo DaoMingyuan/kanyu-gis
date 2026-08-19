@@ -852,6 +852,26 @@ async function main() {
   const ovNoL2 = await callRpc('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: ovlRel, param: { _op: 'difference' } });
   check('skill.run 叠加校验：缺 input2 中文报错（无叠加面要素）', !ovNoL2.ok && /无叠加面要素/.test(ovNoL2.stderr || ''), String(ovNoL2.stderr || '').slice(0, 120));
 
+  // ⑥+++++++++++¹ 裁剪 clip 算子（2026-08-19 第七十五轮）：ArcGIS Clip 语义特化——基准面整体 ∩ 叠加整体一次性交集
+  const ovClipOut = path.join(TMP_DIR, 'overlay-clip.geojson');
+  const ovClip = await callRpc('skill.run', { skill: 'dsh/skills/overlay_ops.wasm', input: ovlRel, input2: ovl2Rel, output: path.relative(REPO_ROOT, ovClipOut), param: { _op: 'clip' } });
+  let ovClipOk = false;
+  try {
+    const fs15 = JSON.parse(await fsp.readFile(ovClipOut, 'utf8')).features;
+    // 基准A(0-10) ∩ 叠加B(5-15) = 5-10 方块（面积 25，坐标全在 [5,10]）；属性只留基准（无 tag/_role），单部无 _part
+    const f0 = fs15[0];
+    const ring = f0 && f0.geometry.coordinates[0];
+    const area = ring && Math.abs(ring.reduce((s, c, i) => {
+      const n = ring[(i + 1) % ring.length];
+      return s + c[0] * n[1] - n[0] * c[1];
+    }, 0)) / 2;
+    const inBox = ring && ring.every(c => c[0] >= 5 && c[0] <= 10 && c[1] >= 5 && c[1] <= 10);
+    ovClipOk = fs15.length === 1 && f0.properties.name === '基准A'
+      && f0.properties.tag === undefined && f0.properties._part === undefined && f0.properties._role === undefined
+      && area === 25 && inBox;
+  } catch { /* 断言兜底 */ }
+  check('skill.run 裁剪 clip：基准面 ∩ 叠加整体一次性交集（ArcGIS Clip 语义：叠加属性不入产出，产出=5-10 方块）', ovClip.ok && ovClipOk, String(ovClip.stderr || ovClip.error || '').slice(0, 120));
+
   // ⑥++++++++++++ 融合 WASM 技能（2026-08-19 第七十一轮）：dissolve_field guest（geo union 按字段分组）
   const disSrc = path.join(TMP_DIR, 'dissolve-test.geojson');
   await fsp.writeFile(disSrc, JSON.stringify({ type: 'FeatureCollection', features: [
@@ -1094,7 +1114,7 @@ async function main() {
     editCutKeys.every((k) => clientSrc.includes(k)),
     editCutKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 技能分析对话框（2026-08-19 第七十轮）：缓冲区/叠加分析 + skillRelay 产图层接力
-  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-'];
+  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-', '裁剪 clip'];
   check('client.js 技能分析对话框（缓冲区距离 + 叠加算子/第二图层 + skillRelay 接力当前图层）',
     skillDlgKeys.every((k) => clientSrc.includes(k)),
     skillDlgKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
