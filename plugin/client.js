@@ -465,6 +465,15 @@ function TabMap(props) {
   function onMapWheel(e) {
     const z = Math.min(16, Math.max(0.5, Math.round(zf * (e.deltaY < 0 ? 1.2 : 1 / 1.2) * 100) / 100))
     if (z === zf) return
+    // 指针为锚（第八十八轮）：保持光标下内容点不动——
+    // pan' = pan·(z'/z) + 指针相对视口中心·(1−z'/z)（内容铺满视口时精确）
+    const el = viewRef.current
+    if (el && z > 1) {
+      const v = el.getBoundingClientRect()
+      const px = e.clientX - (v.left + v.width / 2), py = e.clientY - (v.top + v.height / 2)
+      const k = 1 - z / zf
+      setPan({ x: Math.round(pan.x * (z / zf) + px * k), y: Math.round(pan.y * (z / zf) + py * k) })
+    }
     setZf(z); if (z <= 1) setPan({ x: 0, y: 0 })
     pubZoom(z)
   }

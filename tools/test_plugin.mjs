@@ -1320,6 +1320,15 @@ async function main() {
   check('pkg/client.js 地图画布缩放/平移/复位（与动态半同契约）',
     zoomKeys.every((k) => pkgClientSrc.includes(k)),
     zoomKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 指针为锚缩放（2026-08-19 第八十八轮）：滚轮缩放保持光标下内容点不动，
+  // pan 按倍率差补偿（pan·(z'/z) + 指针相对视口中心·(1−z'/z)）
+  const anchorKeys = ['指针为锚', 'getBoundingClientRect', 'z / zf'];
+  check('client.js 滚轮缩放指针为锚（pan 倍率差补偿）',
+    anchorKeys.every((k) => clientSrc.includes(k)),
+    anchorKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 滚轮缩放指针为锚（与动态半同契约）',
+    anchorKeys.every((k) => pkgClientSrc.includes(k)),
+    anchorKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
