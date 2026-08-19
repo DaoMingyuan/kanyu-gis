@@ -2062,6 +2062,12 @@ h('div', { className: 'kyg-hint' }, msg),
       // 当前图层变为清单外新文件（查询/编辑/服务产出）时自动重扫一次
       function Dock(props) {
         const store = props.store
+        // 图层可见性开关（2026-08-19 第九十六轮，对齐壳层 toc.rs 复选框语义）：
+        // 复选框写回 .kyu visible（style.setVisible RPC），成功更新 kyuProject 快照
+        async function toggleVis(l, vis) {
+          const r = await hostCall('style.setVisible', { kyu: store.kyuProject.kyu, layerId: l.id, visible: vis })
+          if (r && r.ok) { l.visible = r.visible; props.notify() }
+        }
         const [items, setItems] = React.useState(null)
         const [msg, setMsg] = React.useState('')
         async function scan() {
@@ -2102,6 +2108,7 @@ h('div', { className: 'kyg-hint' }, msg),
               className: 'kyg-list-item' + (store.path === l.source ? ' kyg-list-item-active' : ''),
               onClick: () => { store.path = l.source; store.sym = l.style; store.kyu = store.kyuProject.kyu; store.layerId = l.id; props.notify() },
             },
+              h('input', { type: 'checkbox', checked: l.visible, title: '可见性（写回 .kyu）', onClick: e => e.stopPropagation(), onChange: e => toggleVis(l, e.target.checked) }),
               h('span', { className: 'ext' }, l.visible ? '图层' : '隐藏'),
               h('span', null, l.id + (l.styleMode ? ' · ' + l.styleMode : ''))))) : null)
       }

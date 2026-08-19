@@ -1,5 +1,15 @@
 # dsh/ 组件变更记录
 
+## [0.91.0] — 2026-08-19
+
+- **Dock 工程图层可见性开关（第九十六轮，对齐壳层 toc.rs 复选框语义）**：
+  host 新增 `style.setVisible` RPC——.kyu 图层 `visible` 布尔写回（读写
+  通道与 style.set 同款，两空格缩进 + workspace-write 可操作指引）；
+  Dock 工程图层行加复选框（stopPropagation 不抢行点击=图层/样式/工程
+  接力），写回成功即更新 kyuProject 快照徽标（图层/隐藏）。RPC 面
+  33→34。测试器 257/257（static 200/200），agent-browser 3080 实测
+  demo.kyu 关→行徽标「隐藏」+ 文件 visible:false → 开复原 true。
+
 ## [0.90.0] — 2026-08-19
 
 - **3D 高程夸张系数（第九十五轮 ArcGIS 垂直夸张语义）**：`drawScene3d`

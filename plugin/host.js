@@ -468,6 +468,25 @@ return {
       return { ok: true, kyu, layerId: lay.id, style }
     }
 
+    // 图层可见性开关（2026-08-19 第九十六轮 style.setVisible RPC，对齐壳层
+    // toc.rs 复选框语义）：.kyu 图层 visible 布尔写回，读写通道与 styleSet 同款
+    //（fs resolve/readText/writeText + 两空格缩进，写拒绝带 workspace-write 指引）
+    async function styleSetVisible(kyu, layerId, visible) {
+      if (!kyu) return { ok: false, error: '缺 kyu 工程路径' }
+      let target
+      try { target = await fs.resolve(await procPath(kyu)) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+      let m
+      try { m = JSON.parse(await fs.readText(target)) }
+      catch (e) { return { ok: false, error: 'kyu 工程读取/解析失败: ' + String(e && e.message || e) } }
+      const lay = (m.layers || []).find(l => l.id === layerId)
+      if (!lay) return { ok: false, error: '工程内未找到图层: ' + String(layerId || '(空)') }
+      lay.visible = !!visible
+      try {
+        await fs.writeText(target, JSON.stringify(m, null, 2))
+      } catch (e) { return { ok: false, error: 'kyu 工程写回失败: ' + writeHint(e) } }
+      return { ok: true, kyu, layerId: lay.id, visible: lay.visible }
+    }
+
     // 工程图层清单（style.list RPC，第五十五轮）：.kyu layers 全列——id /
     // source（相对工程目录解析为绝对路径，供客户端直接设为当前图层）/
     // visible / styleMode / style 原文。目录页签 .kyu 条目点击展开用。
@@ -1442,6 +1461,7 @@ return {
     harness.handle('style.get', async (a) => styleGet(a && a.kyu, a && a.layerId))
     harness.handle('style.set', async (a) => styleSet(a && a.kyu, a && a.layerId, a && a.style))
     harness.handle('style.list', async (a) => styleList(a && a.kyu))
+    harness.handle('style.setVisible', async (a) => styleSetVisible(a && a.kyu, a && a.layerId, a && a.visible))
     harness.handle('crs.presets', async () => ({ ok: true, presets: CRS_PRESETS }))
     harness.handle('crs.reproject', async (a) => crsReproject(a && a.path, a && a.from, a && a.to, a && a.output))
     harness.handle('crs.search', async (a) => crsSearch(a && a.query, a && a.limit))

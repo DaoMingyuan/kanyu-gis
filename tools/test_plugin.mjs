@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（33 个）', rpc.size === 33, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（34 个）', rpc.size === 34, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（9 个 kanyu_*）', tools.size === 9, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -378,6 +378,14 @@ async function main() {
   check('data.identify：回执含 centroid（示例大厦A=自身坐标）',
     Array.isArray(idn.centroid) && Math.abs(idn.centroid[0] - 116.3914) < 1e-9 && Math.abs(idn.centroid[1] - 39.9072) < 1e-9,
     JSON.stringify(idn.centroid));
+  // 图层可见性开关（2026-08-19 第九十六轮）：style.setVisible 写回 .kyu
+  // visible（关→开回环，demo.kyu 夹具测后复原）
+  const vis0 = await callRpc('style.setVisible', { kyu: dshPath('examples', 'demo.kyu'), layerId: 'buildings', visible: false });
+  check('style.setVisible：关闭可见性写回（visible:false 回执）',
+    vis0.ok && vis0.visible === false, JSON.stringify(vis0).slice(0, 120));
+  const vis1 = await callRpc('style.setVisible', { kyu: dshPath('examples', 'demo.kyu'), layerId: 'buildings', visible: true });
+  check('style.setVisible：开启可见性写回（visible:true，夹具复原）',
+    vis1.ok && vis1.visible === true);
   const tData = tools.get('kanyu_data');
   const prevText = tData && await tData.execute({ action: 'preview', path: EXAMPLE });
   check('动态工具 kanyu_data(preview)：属性表文本（字段头 + 行）',
@@ -1398,6 +1406,15 @@ async function main() {
   check('pkg/client.js 3D 高程夸张系数（与动态半同契约）',
     exagKeys.every((k) => pkgClientSrc.includes(k)),
     exagKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // Dock 工程图层可见性开关（2026-08-19 第九十六轮，对齐壳层 toc.rs 复选框）：
+  // 复选框 stopPropagation 不抢行点击 + toggleVis 写回 .kyu visible + 快照更新
+  const visKeys = ['style.setVisible', 'toggleVis', '可见性（写回 .kyu）', 'stopPropagation'];
+  check('client.js Dock 工程图层可见性开关（复选框写回 .kyu）',
+    visKeys.every((k) => clientSrc.includes(k)),
+    visKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js Dock 工程图层可见性开关（与动态半同契约）',
+    visKeys.every((k) => pkgClientSrc.includes(k)),
+    visKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
