@@ -332,6 +332,12 @@ async function main() {
   check('services.wms：buildGetmapUrl 契约（1.3.0 + EPSG:4326 + bbox 六位小数 + 基址补 &）',
     wms.ok && /service=WMS&request=GetMap&version=1\.3\.0&layers=demo:base&styles=&format=image\/png&transparent=false&crs=EPSG:4326&bbox=113\.500000,29\.500000,114\.500000,30\.500000&width=800&height=600$/.test(wms.source),
     wms.source || '无 source');
+  // 严格 1.3.0 轴序（2026-08-19 第八十五轮）：axisSwap=true → bbox 纬度/经度序
+  // （EPSG:4326 规范轴序；缺省 false 保持壳层宽限契约不变）
+  const wmsSwap = await callRpc('services.wms', { url: 'https://example.com/wms', layer: 'demo:base', bbox: [113.5, 29.5, 114.5, 30.5], urlOnly: true, axisSwap: true });
+  check('services.wms：axisSwap 严格 1.3.0 轴序（bbox 纬度/经度序六位小数）',
+    wmsSwap.ok && /bbox=29\.500000,113\.500000,30\.500000,114\.500000/.test(wmsSwap.source),
+    wmsSwap.source || '无 source');
   if (!STATIC_ONLY) {
     const info = await callRpc('data.info', { path: EXAMPLE });
     check('data.info：buildings.geojson 4 要素', info.ok && /"feature_count":\s*4/.test(info.stdout));
@@ -1083,6 +1089,13 @@ async function main() {
   check('client.js 顶栏工程选择接 .kyu（pickProject + store.kyuProject + Dock 工程图层组）',
     kyuProjKeys.every((k) => clientSrc.includes(k)),
     kyuProjKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 底图 WMS 入画布背景（2026-08-19 第八十五轮）：render.map transparent
+  // （内核 --background none 透明出图）+ loadBasemap（data.info 范围 →
+  // services.wms 同尺寸 GetMap 垫底）+ canvas 合成导出
+  const basemapKeys = ['loadBasemap', 'baseImg', '底图 WMS', 'transparent: baseOn', 'drawImage', 'axisSwap: true'];
+  check('client.js 底图 WMS 入画布背景（透明渲染 + GetMap 垫底 + 合成导出）',
+    basemapKeys.every((k) => clientSrc.includes(k)),
+    basemapKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     fullKeys.every((k) => clientSrc.includes(k)),
     fullKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1283,6 +1296,9 @@ async function main() {
   check('pkg/client.js 顶栏工程选择接 .kyu（与动态半同契约）',
     kyuProjKeys.every((k) => pkgClientSrc.includes(k)),
     kyuProjKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 底图 WMS 入画布背景（与动态半同契约）',
+    basemapKeys.every((k) => pkgClientSrc.includes(k)),
+    basemapKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

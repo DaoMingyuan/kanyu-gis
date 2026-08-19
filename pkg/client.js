@@ -465,6 +465,12 @@ window.__ModuleLoader__.load({
       const [img, setImg] = React.useState(null)
       const [msg, setMsg] = React.useState('')
       const [busy, setBusy] = React.useState(false)
+      // 底图 WMS 入画布背景（第八十五轮）：勾选后 render.map 透明出图
+      // （--background none），data.info 取范围 → services.wms 同尺寸 GetMap 垫底层
+      const [baseOn, setBaseOn] = React.useState(false)
+      const [baseUrl, setBaseUrl] = React.useState('https://ows.terrestris.de/osm/service')
+      const [baseLayer, setBaseLayer] = React.useState('OSM-WMS')
+      const [baseImg, setBaseImg] = React.useState(null)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
       // 目录 .kyu 图层接力（第五十五轮）：store.sym 快照回填符号化表单 +
       // 工程路径/图层 id 回填写入区（闭环：目录→地图→写入工程）
@@ -492,8 +498,8 @@ window.__ModuleLoader__.load({
         const w = Math.max(480, Math.min(1600, cw || 760))
         setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
         try {
-          const r = await hostCall('render.map', { path: usePath, theme, width: w, height: Math.round(w * 0.62), symbology: sym })
-          if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')); publishMapInfo(usePath, w) }
+          const r = await hostCall('render.map', { path: usePath, theme, width: w, height: Math.round(w * 0.62), symbology: sym, transparent: baseOn })
+          if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')); publishMapInfo(usePath, w); if (baseOn) loadBasemap(usePath, w, Math.round(w * 0.62)); else setBaseImg(null) }
           else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
@@ -501,10 +507,22 @@ window.__ModuleLoader__.load({
       // 导出地图图片：当前渲染图（dataURL）落盘下载 PNG
       function exportPng() {
         if (!img) return
-        const a = document.createElement('a')
-        a.href = img
-        a.download = (path ? String(path).split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : 'kanyu-map') + '.png'
-        document.body.appendChild(a); a.click(); a.remove()
+        const name = (path ? String(path).split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : 'kanyu-map') + '.png'
+        const dl = (href) => { const a = document.createElement('a'); a.href = href; a.download = name; document.body.appendChild(a); a.click(); a.remove() }
+        if (!baseImg) { dl(img); return }
+        // 底图叠加导出：canvas 合成（底图垫底 + 透明渲染图覆上）
+        const b = new Image(), f = new Image()
+        let n = 0
+        const go = () => {
+          if (++n < 2) return
+          const cv = document.createElement('canvas')
+          cv.width = f.width; cv.height = f.height
+          const cx = cv.getContext('2d')
+          cx.drawImage(b, 0, 0, cv.width, cv.height); cx.drawImage(f, 0, 0)
+          dl(cv.toDataURL('image/png'))
+        }
+        b.onload = go; f.onload = go
+        b.src = baseImg; f.src = img
       }
       // 状态栏数据发布（第八十三轮）：渲染成功即取 data.info（要素计数/范围），
       // 坐标系按格式推断（GeoJSON 遵循 RFC 7946 = EPSG:4326，其余内核不追踪记未声明），
@@ -521,6 +539,17 @@ window.__ModuleLoader__.load({
           } catch (e) { store.mapInfo = null }
           if (props.notify) props.notify()
         }).catch(() => {})
+      }
+      // 底图加载（第八十五轮）：图层范围 → GetMap（WMS 1.3.0 EPSG:4326，壳层
+      // services.rs 同语义）；失败静默回退无底图
+      async function loadBasemap(p, w, hh) {
+        try {
+          const ir = await hostCall('data.info', { path: p })
+          const j = JSON.parse((ir && ir.stdout) || '{}')
+          if (!j.extent) { setBaseImg(null); return }
+          const br = await hostCall('services.wms', { url: baseUrl, layer: baseLayer, bbox: j.extent, width: w, height: hh, axisSwap: true })
+          setBaseImg(br && br.ok ? 'data:image/png;base64,' + br.png : null)
+        } catch (e) { setBaseImg(null) }
       }
       // 工程样式读写（style.get/style.set RPC，第五十二轮）：读取回填表单 /
       // 写入 .kyu 图层 style（LayerSymbology JSON，壳层工程属性页同语义）
@@ -582,6 +611,11 @@ window.__ModuleLoader__.load({
             h('option', { value: 'graduated' }, '分级 (graduated)')),
           h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染'),
           img ? h('button', { className: 'kyg-btn kyg-btn-sub', title: '下载当前渲染图 PNG', onClick: exportPng }, '导出地图图片') : null),
+        h('div', { className: 'kyg-row' },
+          h('label', { className: 'kyg-hint' },
+            h('input', { type: 'checkbox', checked: baseOn, onChange: e => { setBaseOn(e.target.checked); if (!e.target.checked) setBaseImg(null) } }), ' 底图 WMS'),
+          baseOn ? h('input', { className: 'kyg-input', style: { flex: 1 }, value: baseUrl, onChange: e => setBaseUrl(e.target.value), placeholder: 'WMS 基址（GetMap 1.3.0）' }) : null,
+          baseOn ? h('input', { className: 'kyg-input', style: { width: '120px' }, value: baseLayer, onChange: e => setBaseLayer(e.target.value), placeholder: 'layers 图层名' }) : null),
         symMethod === 'single' ? h('div', { className: 'kyg-row' },
           h('span', { className: 'kyg-label' }, '颜色'),
           h('input', { type: 'color', className: 'kyg-input', value: singleColor, onChange: e => setSingleColor(e.target.value) })) : null,
@@ -598,7 +632,10 @@ window.__ModuleLoader__.load({
           h('button', { className: 'kyg-btn', disabled: busy || !kyuPath, onClick: styleLoad }, '读取样式'),
           h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
         h('div', { className: 'kyg-hint' }, msg),
-        img ? h('div', { className: 'kyg-map-stage' }, h('img', { className: 'kyg-img', src: img, alt: '地图渲染' })) : null,
+        img ? h('div', { className: 'kyg-map-stage' },
+          h('div', { style: { position: 'relative', display: 'inline-block', maxWidth: '100%' } },
+            baseImg ? h('img', { src: baseImg, alt: 'WMS 底图', style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '8px' } }) : null,
+            h('img', { className: 'kyg-img', src: img, alt: '地图渲染', style: { position: 'relative', display: 'block', margin: 0 } }))) : null,
       )
     }
 

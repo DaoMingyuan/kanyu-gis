@@ -1,5 +1,24 @@
 # dsh/ 组件变更记录
 
+## [0.81.0] — 2026-08-19
+
+- **底图 WMS 入画布背景（第八十五轮）**：地图页签新增「底图 WMS」行——
+  勾选后 render.map 透明出图（内核 kanyu-render 新增透明背景支持：
+  `background: "none"/"transparent"` 不铺主题画布色，SVG 省背景 rect、
+  PNG 角像素 alpha=0，CLI `render map --background` 旗标直通），
+  `loadBasemap` 经 data.info 取图层范围 → services.wms GetMap 同尺寸
+  底图垫透明渲染图下层；导出地图图片在有底图时 canvas 合成双层。
+  默认底图 ows.terrestris.de OSM-WMS。
+- **WMS 严格 1.3.0 轴序修复（axisSwap）**：terrestris 等严格服务器按
+  EPSG:4326 规范轴序（纬度/经度序）解读 bbox，壳层契约的经度/纬度序
+  在其上出空白图（壳层已声明的已知边界）。services.wms 新增 `axisSwap`
+  参数（缺省 false 保持壳层宽限契约不变；true 按纬度/经度序发 bbox），
+  工作台底图加载默认置 true。agent-browser 实测：修复前 2.3KB 空白图 →
+  修复后 500KB 真实 OSM 街道底图 + 透明要素叠加出图。
+- 测试器 **229→232** / static **172→175**（底图契约键 + axisSwap 轴序
+  断言锁双端）；内核 kanyu-render 25 测试过（含透明背景 2 新例），
+  cargo test --workspace 全绿。
+
 ## [0.80.0] — 2026-08-19
 
 - **顶栏工程选择接 .kyu（第八十四轮）**：工作台顶栏新增工程下拉——

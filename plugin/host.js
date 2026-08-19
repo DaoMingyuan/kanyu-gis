@@ -322,13 +322,16 @@ return {
       }
       return null
     }
-    async function renderMap(path, theme, width, height, style, symbology) {
+    async function renderMap(path, theme, width, height, style, symbology, transparent) {
       await ensureOutDir()
       const p = await procPath(path)
       const out = OUT_DIR + '\\kanyu-map-' + Date.now() + '.png'
       const args = ['render', 'map', '--json', '--out', q(out),
         '--width', String(width || 800), '--height', String(height || 600),
         '--theme', theme === 'dark' ? 'dark' : 'light']
+      // 透明背景（第八十五轮 底图叠加）：--background none 不铺主题画布色，
+      // 客户端把 services.wms GetMap 底图垫在透明渲染图下层
+      if (transparent) args.push('--background', 'none')
       // 属性驱动符号化（StyleRule，对齐 kanyu-render：graduated/categorical）。
       // 走 --style-file 而非内联 --style：JSON 内嵌双引号在 pwsh 下无法经
       // 命令行引号转义可靠传递（2026-08-18 实测 3080 桥打穿为 pwsh 后端，
@@ -1296,20 +1299,23 @@ return {
     }
 
     // buildGetmapUrl 对齐壳层 services.rs build_getmap_url（WMS 1.3.0 +
-    // CRS=EPSG:4326，bbox 经度/纬度序六位小数——宽限服务器通用；严格 1.3.0
-    // 轴序服务器属壳层已声明的已知边界）。
-    function buildGetmapUrl(base, layer, bbox, w, h) {
-      const bb = (bbox && bbox.length === 4 ? bbox : [-180, -90, 180, 90]).map((v) => Number(v).toFixed(6))
+    // CRS=EPSG:4326，bbox 经度/纬度序六位小数——宽限服务器通用）；axisSwap=true
+    // 时按严格 1.3.0 轴序改发纬度/经度序（EPSG:4326 规范轴序，解 terrestris
+    // 等严格服务器空白图问题——壳层声明的已知边界在组件侧闭环）。
+    function buildGetmapUrl(base, layer, bbox, w, h, axisSwap) {
+      let bb = bbox && bbox.length === 4 ? bbox : [-180, -90, 180, 90]
+      if (axisSwap) bb = [bb[1], bb[0], bb[3], bb[2]]
+      bb = bb.map((v) => Number(v).toFixed(6))
       return joinQuery(base) + 'service=WMS&request=GetMap&version=1.3.0&layers='
         + String(layer || '').trim() + '&styles=&format=image/png&transparent=false&crs=EPSG:4326&bbox='
         + bb.join(',') + '&width=' + (w || 640) + '&height=' + (h || 320)
     }
     // WMS GetMap 底图（壳层 v2 语义）；urlOnly 为离线契约路径（只构造地址
     // 不触网）。联机路径拉 PNG → base64 回传 Client 内联预览。
-    async function servicesWms(url, layer, bbox, width, height, urlOnly) {
+    async function servicesWms(url, layer, bbox, width, height, urlOnly, axisSwap) {
       if (!layer || !String(layer).trim()) return { ok: false, error: '缺少图层名（layers）' }
       if (!url || !/^https?:\/\//.test(url)) return { ok: false, error: '服务基址须为 http(s) URL' }
-      const reqUrl = buildGetmapUrl(url, layer, bbox, width, height)
+      const reqUrl = buildGetmapUrl(url, layer, bbox, width, height, axisSwap)
       if (urlOnly) return { ok: true, source: reqUrl }
       try {
         const ctrl = new AbortController()
@@ -1346,13 +1352,13 @@ return {
     harness.handle('catalog.list', async (a) => catalogList(a && a.dir, a && a.depth))
     harness.handle('services.discover', async (a) => servicesDiscover(a && a.url, a && a.xml))
     harness.handle('services.fetch', async (a) => servicesFetch(a && a.url, a && a.layer, a && a.output, a && a.data))
-    harness.handle('services.wms', async (a) => servicesWms(a && a.url, a && a.layer, a && a.bbox, a && a.width, a && a.height, !!(a && a.urlOnly)))
+    harness.handle('services.wms', async (a) => servicesWms(a && a.url, a && a.layer, a && a.bbox, a && a.width, a && a.height, !!(a && a.urlOnly), !!(a && a.axisSwap)))
     harness.handle('data.info', async (a) => dataInfo(a && a.path))
     harness.handle('data.query', async (a) => dataQuery(a && a.path, a && a.filter, a && a.output))
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
     harness.handle('data.preview', async (a) => dataPreview(a && a.path, a && a.limit))
     harness.handle('data.calc', async (a) => dataCalc(a && a.path, a && a.target, a && a.expr, a && a.output))
-    harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style, a && a.symbology))
+    harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style, a && a.symbology, !!(a && a.transparent)))
     harness.handle('render.layout', async (a) => layoutPreview(a))
     harness.handle('catalog.readImage', async (a) => readImagePng(a && a.path))
     harness.handle('style.get', async (a) => styleGet(a && a.kyu, a && a.layerId))
@@ -1423,10 +1429,11 @@ return {
         width: { type: 'number', description: 'WMS 底图宽像素（默认 640）' },
         height: { type: 'number', description: 'WMS 底图高像素（默认 320）' },
         urlOnly: { type: 'boolean', description: 'WMS 只构造 GetMap 地址不拉取（离线契约路径）' },
+        axisSwap: { type: 'boolean', description: 'WMS 严格 1.3.0 轴序（EPSG:4326 按纬度/经度序发 bbox；严格服务器出空白图时置 true）' },
       },
       async execute(args) {
         if (args.url && args.layer && args.kind === 'wms') {
-          const w = await servicesWms(args.url, args.layer, args.bbox, args.width, args.height, !!args.urlOnly)
+          const w = await servicesWms(args.url, args.layer, args.bbox, args.width, args.height, !!args.urlOnly, !!args.axisSwap)
           if (!w.ok) return 'WMS 底图拉取失败: ' + w.error
           if (args.urlOnly) return 'WMS GetMap 地址（' + args.layer + '，仅构造未拉取）：' + w.source
           return 'WMS 底图 ' + args.layer + ' GetMap 拉取成功：' + w.bytes + ' 字节 PNG（' + (args.width || 640) + '×' + (args.height || 320) + '，EPSG:4326；来源：' + w.source + '；内联预览在工作台目录页签服务链接区）'
@@ -1512,7 +1519,7 @@ return {
           if (!r.run.ok) return '排版失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
           return '排版完成: ' + r.out + '（可 read_image 查看）'
         }
-        const r = await renderMap(args.path, args.theme, args.width, args.height, args.style, args.symbology)
+        const r = await renderMap(args.path, args.theme, args.width, args.height, args.style, args.symbology, !!args.transparent)
         if (!r.run.ok) return '渲染失败(exit ' + r.run.exitCode + '): ' + r.run.stderr.slice(0, 2000)
         return '渲染完成: ' + r.out + (r.pngBase64 ? '（PNG ' + Math.round(r.pngBase64.length * 3 / 4 / 1024) + 'KB，可 read_image 查看）' : '（图片读取失败）')
       },
