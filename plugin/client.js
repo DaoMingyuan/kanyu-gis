@@ -32,7 +32,12 @@ const CSS = `
 .kyg-main{display:flex;flex:1;min-height:0}
 .kyg-dock{width:230px;min-width:230px;border-right:1px solid rgba(255,255,255,.08);overflow-y:auto;padding:8px}
 .kyg-dock-head{display:flex;align-items:center;justify-content:space-between;font-weight:600;padding:2px 4px 8px}
-.kyg-center{flex:1;min-width:0;overflow-y:auto;padding:12px 14px}
+.kyg-center{flex:1;min-width:0;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column}
+.kyg-fill{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.kyg-fill .kyg-map-stage{flex:1 1 auto;min-height:280px;display:flex;flex-direction:column;justify-content:center}
+.kyg-viewswitch{display:flex;margin-bottom:8px;border:1px solid rgba(255,255,255,.12);border-radius:6px;overflow:hidden;width:max-content;flex:0 0 auto}
+.kyg-viewbtn{background:transparent;border:none;color:inherit;padding:3px 14px;font-size:12px;cursor:pointer}
+.kyg-viewbtn-on{background:#c8614a;color:#fff}
 .kyg-status{display:flex;gap:18px;padding:5px 14px;border-top:1px solid rgba(255,255,255,.08);
   color:#9aa4b8;font-size:11px;align-items:center}
 .kyg-list-item-active{background:rgba(200,97,74,.18)}
@@ -473,13 +478,16 @@ function approxScale(extent, widthPx) {
 function TabMap(props) {
   const store = props.store
   const [path, setPath] = React.useState(store.path)
-  const [theme, setTheme] = React.useState('light')
+  // 主题选择器已删（2026-08-19 第九十八轮）：UI 固定晨山 light；render.map
+  // theme 参数契约保留（CLI/MCP 侧不动），此处恒传 'light'
   const [symMethod, setSymMethod] = React.useState('none')
   const [symField, setSymField] = React.useState('')
   const [symSpec, setSymSpec] = React.useState('')
   const [singleColor, setSingleColor] = React.useState('#2D6A5E')
   const [otherColor, setOtherColor] = React.useState('#888888')
   const [ramp, setRamp] = React.useState('Jade')
+  // 样式折叠区开关（第九十八轮）：符号化/.kyu 持久化行默认收起，画布优先
+  const [symOpen, setSymOpen] = React.useState(false)
   const [kyuPath, setKyuPath] = React.useState('')
   const [layerId, setLayerId] = React.useState('')
   const [img, setImg] = React.useState(null)
@@ -680,7 +688,7 @@ function TabMap(props) {
     const w = Math.max(480, Math.min(1600, cw || 760))
     setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
     try {
-      const r = await host.call('render.map', { path: usePath, theme, width: w, height: Math.round(w * 0.62), symbology: sym, transparent: baseOn })
+      const r = await host.call('render.map', { path: usePath, theme: 'light', width: w, height: Math.round(w * 0.62), symbology: sym, transparent: baseOn })
       if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')); publishMapInfo(usePath, w); setZf(1); setPan({ x: 0, y: 0 }); store.mapZoom = 1; if (baseOn) loadBasemap(usePath, w, Math.round(w * 0.62)); else setBaseImg(null) }
       else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
@@ -780,46 +788,45 @@ function TabMap(props) {
     firstRef.current = true
     render2d(store.path)
   }, [store.path])
-  return h('div', null,
+  return h('div', { className: 'kyg-fill' },
     Field('数据', h('input', { className: 'kyg-input', value: path, onChange: e => setPath(e.target.value) })),
+    // 工具行单行化（2026-08-19 第九十八轮地图 GIS 化）：主题选择器删除（固定
+    // 晨山 light，render.map theme 契约保留恒传 'light'）；符号化/.kyu 持久化
+    // 收进「样式」折叠区（symOpen），画布 kyg-fill 铺满中央区
     h('div', { className: 'kyg-row' },
-      h('span', { className: 'kyg-label' }, '主题'),
-      h('select', { className: 'kyg-input', value: theme, onChange: e => setTheme(e.target.value) },
-        h('option', { value: 'light' }, '晨山 (light)'), h('option', { value: 'dark' }, '夜观星 (dark)')),
+      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染'),
+      img ? h('button', { className: 'kyg-btn kyg-btn-sub', title: '下载当前渲染图 PNG', onClick: exportPng }, '导出地图图片') : null,
+      h('label', { className: 'kyg-hint' },
+        h('input', { type: 'checkbox', checked: baseOn, onChange: e => { setBaseOn(e.target.checked); if (!e.target.checked) setBaseImg(null) } }), ' 底图 WMS'),
+      baseOn ? h('input', { className: 'kyg-input', style: { flex: 1 }, value: baseUrl, onChange: e => setBaseUrl(e.target.value), placeholder: 'WMS 基址（GetMap 1.3.0）' }) : null,
+      baseOn ? h('input', { className: 'kyg-input', style: { width: '120px' }, value: baseLayer, onChange: e => setBaseLayer(e.target.value), placeholder: 'layers 图层名' }) : null,
+      h('span', { className: 'kyg-label' }, '量测'),
+      h('select', { className: 'kyg-input', value: measureMode, onChange: e => { setMeasureMode(e.target.value); setMeasurePts([]); setMeasureDone(false) } },
+        h('option', { value: 'off' }, '关闭'), h('option', { value: 'length' }, '距离'), h('option', { value: 'area' }, '面积')),
+      measurePts.length ? h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { setMeasurePts([]); setMeasureDone(false) } }, '清除量测') : null,
+      h('button', { className: 'kyg-btn kyg-btn-sub', title: '符号化与 .kyu 工程持久化', onClick: () => setSymOpen(!symOpen) }, (symOpen ? '▾ ' : '▸ ') + '样式')),
+    symOpen ? h('div', { className: 'kyg-row' },
       h('span', { className: 'kyg-label' }, '符号化'),
       h('select', { className: 'kyg-input', value: symMethod, onChange: e => setSymMethod(e.target.value) },
         h('option', { value: 'none' }, '默认'),
         h('option', { value: 'single' }, '单色 (single)'),
         h('option', { value: 'categorical' }, '唯一值 (categorical)'),
-        h('option', { value: 'graduated' }, '分级 (graduated)')),
-      h('button', { className: 'kyg-btn', disabled: busy || !path, onClick: () => render2d() }, '渲染'),
-      img ? h('button', { className: 'kyg-btn kyg-btn-sub', title: '下载当前渲染图 PNG', onClick: exportPng }, '导出地图图片') : null),
-    h('div', { className: 'kyg-row' },
-      h('label', { className: 'kyg-hint' },
-        h('input', { type: 'checkbox', checked: baseOn, onChange: e => { setBaseOn(e.target.checked); if (!e.target.checked) setBaseImg(null) } }), ' 底图 WMS'),
-      baseOn ? h('input', { className: 'kyg-input', style: { flex: 1 }, value: baseUrl, onChange: e => setBaseUrl(e.target.value), placeholder: 'WMS 基址（GetMap 1.3.0）' }) : null,
-      baseOn ? h('input', { className: 'kyg-input', style: { width: '120px' }, value: baseLayer, onChange: e => setBaseLayer(e.target.value), placeholder: 'layers 图层名' }) : null),
-    symMethod === 'single' ? h('div', { className: 'kyg-row' },
+        h('option', { value: 'graduated' }, '分级 (graduated)'))) : null,
+    symOpen && symMethod === 'single' ? h('div', { className: 'kyg-row' },
       h('span', { className: 'kyg-label' }, '颜色'),
       h('input', { type: 'color', className: 'kyg-input', value: singleColor, onChange: e => setSingleColor(e.target.value) })) : null,
-    symMethod === 'categorical' || symMethod === 'graduated' ? h('div', { className: 'kyg-row' },
+    symOpen && (symMethod === 'categorical' || symMethod === 'graduated') ? h('div', { className: 'kyg-row' },
       h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '字段名', value: symField, onChange: e => setSymField(e.target.value) }),
       h('input', { className: 'kyg-input', style: { flex: 1 }, value: symSpec, onChange: e => setSymSpec(e.target.value),
         placeholder: symMethod === 'graduated' ? '断点,…（严格升序数字，如 10,20,40；颜色由色带取样）' : '类别:#RRGGBB,…（如 办公:#2D6A5E,住宅:#D9A23C）' }),
       symMethod === 'graduated' ? h('select', { className: 'kyg-input', value: ramp, onChange: e => setRamp(e.target.value) },
         h('option', { value: 'Jade' }, '青玉'), h('option', { value: 'Amber' }, '琥珀'), h('option', { value: 'Slate' }, '蓝灰')) : null,
       symMethod === 'categorical' ? h('input', { type: 'color', className: 'kyg-input', title: '<其他> 色', value: otherColor, onChange: e => setOtherColor(e.target.value) }) : null) : null,
-    h('div', { className: 'kyg-row' },
+    symOpen ? h('div', { className: 'kyg-row' },
       h('input', { className: 'kyg-input', style: { flex: 1 }, placeholder: '.kyu 工程路径（符号化持久化）', value: kyuPath, onChange: e => setKyuPath(e.target.value) }),
       h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '图层 id', value: layerId, onChange: e => setLayerId(e.target.value) }),
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath, onClick: styleLoad }, '读取样式'),
-      h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
-        h('div', { className: 'kyg-row' },
-      h('span', { className: 'kyg-label' }, '量测'),
-      h('select', { className: 'kyg-input', value: measureMode, onChange: e => { setMeasureMode(e.target.value); setMeasurePts([]); setMeasureDone(false) } },
-        h('option', { value: 'off' }, '关闭'), h('option', { value: 'length' }, '距离'), h('option', { value: 'area' }, '面积')),
-      measurePts.length ? h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { setMeasurePts([]); setMeasureDone(false) } }, '清除量测') : null,
-      measureText() ? h('span', { className: 'kyg-label' }, measureText()) : null),
+      h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')) : null,
 h('div', { className: 'kyg-hint' }, msg),
     img ? h('div', { ref: stageRef, className: 'kyg-map-stage' },
       h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位 · 单击点选要素', onMouseDown: onMapDown, onDoubleClick: onMapDblClick, onClick: onMapClick, onMouseMove: onMapMove, onMouseLeave: onMapLeave },
@@ -1975,7 +1982,8 @@ const TABS = [
   { id: 'catalog', name: '目录', grp: '数据管理', icon: 'catalog', C: TabCatalog },
   { id: 'data', name: '数据', grp: '数据管理', icon: 'data', C: TabData },
   { id: 'map', name: '地图', grp: '地图视图', icon: 'map', C: TabMap },
-  { id: 'scene3d', name: '3D', grp: '地图视图', icon: 'scene3d', C: Tab3d },
+  // 第九十八轮：3D 收进地图视图 2D/3D 分段切换（hidden 不占 ribbon 页签）
+  { id: 'scene3d', name: '3D', grp: '地图视图', icon: 'scene3d', hidden: true, C: Tab3d },
   { id: 'crs', name: '坐标', grp: '分析处理', icon: 'crs', C: TabCrs },
   { id: 'gp', name: '处理', grp: '分析处理', icon: 'gp', C: TabGp },
   { id: 'edit', name: '编辑', grp: '编辑', icon: 'edit', C: TabEdit },
@@ -2141,14 +2149,20 @@ return {
         h('div', { className: 'kyg-tabs' },
           KYG_GRPS.map(g => h('div', { key: g, className: 'kyg-grp' },
             h('div', { className: 'kyg-grp-btns' },
-              TABS.filter(t => t.grp === g).map(t => h('button', {
+              TABS.filter(t => t.grp === g && !t.hidden).map(t => h('button', {
                 key: t.id, className: 'kyg-tab' + (t.id === tab ? ' kyg-tab-active' : ''),
                 onClick: () => setTab(t.id),
               }, kanyuIcon(t.icon), h('span', null, t.name)))),
             h('div', { className: 'kyg-grp-label' }, g)))),
         h('div', { className: 'kyg-main' },
           h(Dock, { store: s, notify }),
-          h('div', { className: 'kyg-center' }, h(cur.C, { store: s, notify }))),
+          h('div', { className: 'kyg-center' },
+            // 2D/3D 视图切换（2026-08-19 第九十八轮，ArcGIS Pro 视图范式：
+            // 同一中央区互斥切换，3D 不再占 ribbon 独立页签）
+            tab === 'map' || tab === 'scene3d' ? h('div', { className: 'kyg-viewswitch' },
+              h('button', { className: 'kyg-viewbtn' + (tab === 'map' ? ' kyg-viewbtn-on' : ''), onClick: () => setTab('map') }, '2D 地图'),
+              h('button', { className: 'kyg-viewbtn' + (tab === 'scene3d' ? ' kyg-viewbtn-on' : ''), onClick: () => setTab('scene3d') }, '3D 场景')) : null,
+            h(cur.C, { store: s, notify }))),
         h('div', { className: 'kyg-status' },
           h('span', null, '页签: ' + cur.name),
           base ? h('span', null, '当前图层: ' + base) : h('span', null, '未选图层'),

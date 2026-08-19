@@ -1110,6 +1110,12 @@ async function main() {
     clientSrc.includes('autoOpened') && clientSrc.includes('store.open = true; notify()'));
   const fullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
   const mapStageKeys = ['stageRef', 'firstRef', 'kyg-map-stage', '导出地图图片', 'exportPng'];
+  // 地图页签 GIS 化（2026-08-19 第九十八轮）：2D/3D 视图切换 + 主题选择器删除
+  //（固定 light，夜观星 UI 零残留）+ 样式折叠区 + 画布铺满
+  const mapGisKeys = ['kyg-viewswitch', '2D 地图', '3D 场景', 'kyg-fill', 'symOpen', 'hidden: true', "theme: 'light'"];
+  check('client.js 地图页签 GIS 化（2D/3D 切换 + 主题固定 light 无夜观星残留 + 样式折叠 + kyg-fill）',
+    mapGisKeys.every((k) => clientSrc.includes(k)) && !clientSrc.includes('夜观星'),
+    mapGisKeys.filter((k) => !clientSrc.includes(k)).join(',') || (clientSrc.includes('夜观星') ? '夜观星残留' : '全部命中'));
   check('client.js 地图页签画布化（舞台量宽渲染 + 入场自动出图 + 导出地图图片）',
     mapStageKeys.every((k) => clientSrc.includes(k)),
     mapStageKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1337,6 +1343,9 @@ async function main() {
     linkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   const pkgFullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
   const pkgMapStageKeys = ['stageRef', 'firstRef', 'kyg-map-stage', '导出地图图片', 'exportPng'];
+  check('pkg/client.js 地图页签 GIS 化（与动态半同契约）',
+    mapGisKeys.every((k) => pkgClientSrc.includes(k)) && !pkgClientSrc.includes('夜观星'),
+    mapGisKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || (pkgClientSrc.includes('夜观星') ? '夜观星残留' : '全部命中'));
   check('pkg/client.js 地图页签画布化（舞台量宽渲染 + 入场自动出图 + 导出地图图片）',
     pkgMapStageKeys.every((k) => pkgClientSrc.includes(k)),
     pkgMapStageKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

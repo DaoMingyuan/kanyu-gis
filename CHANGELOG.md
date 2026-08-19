@@ -1,5 +1,17 @@
 # dsh/ 组件变更记录
 
+## [0.93.0] — 2026-08-19
+
+- **地图界面 GIS 化（第九十八轮）**：主题选择器删除——UI 固定晨山 light
+  （`render.map` theme 参数契约保留，恒传 'light'，CLI/MCP 侧不动）；
+  地图页签工具行单行化（渲染/导出/底图 WMS/量测一行，符号化三态表单与
+  .kyu 工程持久化行收进「样式」折叠区 symOpen，画布优先）；`.kyg-center`
+  改 flex 列向 + `.kyg-fill` 画布铺满中央区；2D/3D 视图切换——中央区
+  顶部 `kyg-viewswitch` 分段控件互斥切换 TabMap/Tab3d，scene3d 页签
+  `hidden: true` 不占 ribbon（ArcGIS Pro 视图范式）。测试器 264/264
+  （static 207/207，+2），agent-browser 3080 实测 2D 渲染/3D 加载/
+  视图切换回环 + 截图目检。
+
 ## [0.92.0] — 2026-08-19
 
 - **目录 ArcGIS Pro 化 + GDB/SHP 数据支持（第九十七轮）**：`catalog.list`
