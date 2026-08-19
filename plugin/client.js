@@ -93,6 +93,9 @@ function TabCatalog(props) {
   const [busy, setBusy] = React.useState(false)
   const [msg, setMsg] = React.useState('')
   const [open, setOpen] = React.useState({})
+  // 条目过滤（2026-08-19 第七十七轮）：按显示名子串过滤五分类清单
+  // （大小写不敏感；命中数/总数在分类头显示，过滤时全部展开便于命中可见）
+  const [flt, setFlt] = React.useState('')
   async function scan() {
     setBusy(true); setMsg('扫描中…')
     try {
@@ -213,25 +216,29 @@ function TabCatalog(props) {
   function catRows(cat) {
     const pick = (it, ext, text, clickable) => ({ key: it.path || text, ext, text,
       size: it.size, onClick: clickable ? () => { store.path = it.path; props.notify() } : undefined })
-    if (cat.name === '数据库') return (data.dbItems || []).map(it => (/\.kyu$/i.test(it.path || it.name)
+    let rows
+    if (cat.name === '数据库') rows = (data.dbItems || []).map(it => (/\.kyu$/i.test(it.path || it.name)
       ? { key: it.path || it.name, ext: 'KYU', text: it.name, size: it.size, onClick: () => loadKyu(it) }
       : pick(it, it.ext.toUpperCase(), it.name, true)))
-    if (cat.name === '本机数据') return (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
-    if (cat.name === '地图框') return (data.mapItems || []).map(it => ({ key: it.path || it.name, ext: 'PNG', text: it.name, size: it.size,
+    else if (cat.name === '本机数据') rows = (data.dataItems || []).map(it => pick(it, it.ext.toUpperCase(), it.name, true))
+    else if (cat.name === '地图框') rows = (data.mapItems || []).map(it => ({ key: it.path || it.name, ext: 'PNG', text: it.name, size: it.size,
       onClick: () => previewMapImage(it) }))
-    if (cat.name === '布局框') return (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null,
+    else if (cat.name === '布局框') rows = (data.layoutItems || []).map(it => ({ key: it.title + it.from, ext: 'KYU', text: it.title + ' —— ' + it.from, size: null,
       onClick: layBusy ? undefined : () => previewLayout(it) }))
-    return []
+    else rows = []
+    const q = flt.trim().toLowerCase()
+    return q ? rows.filter(r => String(r.text).toLowerCase().includes(q)) : rows
   }
   function catSection(cat) {
     const rows = catRows(cat)
-    // 壳层契约：默认仅「本机数据」展开
-    const isOpen = open[cat.name] !== undefined ? open[cat.name] : cat.name === '本机数据'
+    // 壳层契约：默认仅「本机数据」展开；过滤中强制展开（命中可见）
+    const isOpen = flt.trim() ? true
+      : open[cat.name] !== undefined ? open[cat.name] : cat.name === '本机数据'
     return h('div', { key: cat.name },
       h('div', { className: 'kyg-cat-head', onClick: () => setOpen(Object.assign({}, open, { [cat.name]: !isOpen })) },
         h('span', { className: 'arr' }, isOpen ? '▾' : '▸'),
         h('span', null, cat.name),
-        h('span', { className: 'ct' }, cat.count)),
+        h('span', { className: 'ct' }, flt.trim() && cat.name !== '服务链接' ? rows.length + '/' + cat.count : cat.count)),
       isOpen && (cat.name === '服务链接' ? svcSection()
         : rows.length ? rows.map((r, i) => h('div', {
             key: i, className: 'kyg-list-item',
@@ -247,6 +254,7 @@ function TabCatalog(props) {
     Field('目录', h('input', { className: 'kyg-input', value: dir, placeholder: '缺省 = 会话工作区根', onChange: e => setDir(e.target.value) })),
     h('div', { className: 'kyg-row' },
       h('button', { className: 'kyg-btn', disabled: busy, onClick: scan }, '扫描'),
+      h('input', { className: 'kyg-input', style: { maxWidth: '34%' }, value: flt, placeholder: '过滤条目名（五分类清单）', onChange: e => setFlt(e.target.value) }),
       store.path ? h('span', { className: 'kyg-sel' }, '当前图层: ' + store.path) : null),
     h('div', { className: 'kyg-hint' }, msg),
     data && data.categories && data.categories.map(catSection),

@@ -1076,7 +1076,8 @@ async function main() {
     kyuLinkKeys.every((k) => clientSrc.includes(k)),
     kyuLinkKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 目录页签五分类（2026-08-18 第十四/二十轮）：分类头 + 数据库/本机数据/地图框/布局框分离
-  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '本机数据'];
+  // + 条目过滤（第七十七轮：flt/setFlt 过滤框 + 过滤中强制展开 + 命中/总计数）
+  const catKeys = ['kyg-cat-head', 'dataItems', 'dbItems', 'mapItems', 'layoutItems', '本机数据', 'setFlt', '过滤条目名（五分类清单）', 'rows.filter'];
   check('client.js 目录页签五分类区（kyg-cat-head + dataItems/dbItems）',
     catKeys.every((k) => clientSrc.includes(k)),
     catKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
