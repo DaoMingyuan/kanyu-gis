@@ -919,6 +919,28 @@ async function main() {
   check('skill.run 统计：param _stat/_field 注入 + stat_summary.wasm 分组聚合（A 组 _count=2/_avg=20，B 组 "bad" 跳过 _skipped=1）', st1.ok && stOk, String(st1.stderr || st1.error || '').slice(0, 120));
   const stNoStat = await callRpc('skill.run', { skill: 'dsh/skills/stat_summary.wasm', input: statRel });
   check('skill.run 统计校验：缺 param._stat 中文报错（guest 契约）', !stNoStat.ok && /未找到统计参数/.test(stNoStat.stderr || ''), String(stNoStat.stderr || '').slice(0, 120));
+
+  // ⑥++++++++++++++++ 几何简化 WASM 技能（2026-08-19 第七十六轮）：simplify_geom guest（geo Simplify RDP）
+  const simpSrc = path.join(TMP_DIR, 'simplify-test.geojson');
+  await fsp.writeFile(simpSrc, JSON.stringify({ type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'LineString', coordinates: [[0, 0], [1, 0.5], [2, 0], [3, 0.5], [4, 0], [5, 0.5], [6, 0], [7, 0.5], [8, 0], [9, 0.5], [10, 0]] }, properties: { name: '锯齿' } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: '点透传' } },
+  ] }));
+  const simpRel = path.relative(REPO_ROOT, simpSrc);
+  const simpOut = path.join(TMP_DIR, 'simplify-out.geojson');
+  const sp1 = await callRpc('skill.run', { skill: 'dsh/skills/simplify_geom.wasm', input: simpRel, output: path.relative(REPO_ROOT, simpOut), param: { _tolerance: 2 } });
+  let spOk = false;
+  try {
+    const fs16 = JSON.parse(await fsp.readFile(simpOut, 'utf8')).features;
+    const line = fs16.find(f => f.properties.name === '锯齿');
+    const pt = fs16.find(f => f.properties.name === '点透传');
+    spOk = fs16.length === 2
+      && line && line.geometry.coordinates.length === 2 && line.properties._verts === '11→2' && line.properties._tolerance === 2
+      && pt && pt.geometry.type === 'Point' && pt.properties._verts === undefined;
+  } catch { /* 断言兜底 */ }
+  check('skill.run 几何简化：param _tolerance 注入 + simplify_geom.wasm RDP 抽稀（锯齿线 11→2 顶点 + _verts 注入 + 点系透传）', sp1.ok && spOk, String(sp1.stderr || sp1.error || '').slice(0, 120));
+  const spNoTol = await callRpc('skill.run', { skill: 'dsh/skills/simplify_geom.wasm', input: simpRel });
+  check('skill.run 简化校验：缺 param._tolerance 中文报错（guest 契约）', !spNoTol.ok && /未找到简化参数/.test(spNoTol.stderr || ''), String(spNoTol.stderr || '').slice(0, 120));
   }
 
   // ⑦ 3D 地理（能力 7）
@@ -1114,7 +1136,7 @@ async function main() {
     editCutKeys.every((k) => clientSrc.includes(k)),
     editCutKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 技能分析对话框（2026-08-19 第七十轮）：缓冲区/叠加分析 + skillRelay 产图层接力
-  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-', '裁剪 clip'];
+  const skillDlgKeys = ['applyBuffer', 'applyOverlay', 'applyDissolve', 'applyStat', 'applySimplify', 'skillRelay', 'buffer_zones.wasm', 'overlay_ops.wasm', 'dissolve_field.wasm', 'stat_summary.wasm', 'simplify_geom.wasm', '技能分析', 'kanyu-buffer-', 'kanyu-overlay-', 'kanyu-dissolve-', 'kanyu-stat-', 'kanyu-simplify-', '裁剪 clip'];
   check('client.js 技能分析对话框（缓冲区距离 + 叠加算子/第二图层 + skillRelay 接力当前图层）',
     skillDlgKeys.every((k) => clientSrc.includes(k)),
     skillDlgKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');

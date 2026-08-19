@@ -1186,7 +1186,8 @@ window.__ModuleLoader__.load({
       }
       // 技能分析对话框（WASM 沙箱，2026-08-19 第七十轮）：缓冲区（buffer_zones
       // _distance）/ 叠加分析（overlay_ops _op + 第二图层）/ 融合（dissolve_field
-      // _field）/ 统计（stat_summary _stat + 可选 _field 分组）；param/input2 注入通道，
+      // _field）/ 统计（stat_summary _stat + 可选 _field 分组）/ 简化（simplify_geom
+      // _tolerance RDP 容差）；param/input2 注入通道，
       // 产出落 dsh/output 接力当前图层（同 applyCutPoly 产图层联动语义）
       const [bufDist, setBufDist] = React.useState('')
       const [ovlOp, setOvlOp] = React.useState('intersect')
@@ -1194,6 +1195,7 @@ window.__ModuleLoader__.load({
       const [disField, setDisField] = React.useState('')
       const [statField, setStatField] = React.useState('')
       const [statGroup, setStatGroup] = React.useState('')
+      const [simpTol, setSimpTol] = React.useState('')
       async function skillRelay(r, outPath, label) {
         if (r && r.ok) {
           store.path = outPath; setPath(outPath)
@@ -1245,6 +1247,16 @@ window.__ModuleLoader__.load({
         try {
           const r = await hostCall('skill.run', { skill: 'dsh/skills/stat_summary.wasm', input: path, output: outPath, param })
           await skillRelay(r, outPath, '统计')
+        } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
+      }
+      async function applySimplify() {
+        const t = parseFloat(simpTol)
+        if (!(t > 0)) { setOut('简化容差须为正数（当前: ' + (simpTol || '空') + '）'); return }
+        const outPath = 'dsh/output/kanyu-simplify-' + Date.now() + '.geojson'
+        setBusy(true); setOut('几何简化中（RDP 容差 ' + t + '）…')
+        try {
+          const r = await hostCall('skill.run', { skill: 'dsh/skills/simplify_geom.wasm', input: path, output: outPath, param: { _tolerance: t } })
+          await skillRelay(r, outPath, '简化')
         } catch (e) { setOut('RPC 失败: ' + (e && e.message || e)); setBusy(false) }
       }
       return h('div', null,
@@ -1355,6 +1367,9 @@ window.__ModuleLoader__.load({
           h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: statField, placeholder: '统计数值字段名（_stat）', onChange: e => setStatField(e.target.value) }),
           h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: statGroup, placeholder: '分组字段名（可选，缺省全表一组）', onChange: e => setStatGroup(e.target.value) }),
           h('button', { className: 'kyg-btn', disabled: busy || !path || !statField, onClick: applyStat }, '统计')),
+        h('div', { className: 'kyg-row' },
+          h('input', { className: 'kyg-input', style: { maxWidth: '26%' }, value: simpTol, placeholder: '简化容差（RDP，地图单位 > 0）', onChange: e => setSimpTol(e.target.value) }),
+          h('button', { className: 'kyg-btn', disabled: busy || !path || !simpTol, onClick: applySimplify }, '几何简化')),
         h(ResultPre, { text: out }),
       )
     }

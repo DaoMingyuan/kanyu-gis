@@ -1,5 +1,16 @@
 # dsh/ 组件变更记录
 
+## [0.72.0] — 2026-08-19
+
+- **几何简化 WASM 技能（第七十六轮，技能沙箱第六算子）**：新 guest
+  `simplify_geom`——param `_tolerance` RDP 容差抽稀线/面顶点（geo Simplify，
+  属性继承 + `_tolerance`/`_verts` 前后顶点数；点系透传、退化跳过）。
+  host.js `kanyu_skill` 清单+param 说明登记；双端 client.js 技能分析区加
+  简化行（容差输入 + skillRelay 接力）。
+- 测试器 214→**216**（+2 简化功能实测 11→2 顶点抽稀/点透传 + 缺参中文
+  报错契约）/ static **162** 不变（skillDlgKeys 扩 `applySimplify`/
+  `simplify_geom.wasm`/`kanyu-simplify-` 契约键）。
+
 ## [0.71.0] — 2026-08-19
 
 - **裁剪 clip 算子（第七十五轮）**：`overlay_ops` guest 扩 `_op: clip`——
