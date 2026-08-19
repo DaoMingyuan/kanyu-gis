@@ -1077,6 +1077,12 @@ async function main() {
   check('client.js 状态栏真实数据（要素计数/坐标系/比例尺/选择计数 → store 发布）',
     statusKeys.every((k) => clientSrc.includes(k)),
     statusKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  // 顶栏工程选择（2026-08-19 第八十四轮）：catalog.list 扫 .kyu → style.list
+  // 载入图层清单 → store.kyuProject 发布 → Dock 工程图层组（点击=图层+样式+工程接力）
+  const kyuProjKeys = ['kyuProject', 'pickProject', 'kyuList', '（无工程）', '工程: '];
+  check('client.js 顶栏工程选择接 .kyu（pickProject + store.kyuProject + Dock 工程图层组）',
+    kyuProjKeys.every((k) => clientSrc.includes(k)),
+    kyuProjKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     fullKeys.every((k) => clientSrc.includes(k)),
     fullKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1274,6 +1280,9 @@ async function main() {
   check('pkg/client.js 状态栏真实数据（与动态半同契约）',
     statusKeys.every((k) => pkgClientSrc.includes(k)),
     statusKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 顶栏工程选择接 .kyu（与动态半同契约）',
+    kyuProjKeys.every((k) => pkgClientSrc.includes(k)),
+    kyuProjKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

@@ -1709,7 +1709,7 @@ return {
     styles.insert(CSS)
 
     // ------ 包级共享状态（头部按钮 ↔ 全屏工作台 ↔ cordis 卡片） ------
-    const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, selVerts: 0, selFeature: -1 }
+    const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, selVerts: 0, selFeature: -1, kyuProject: null }
     const listeners = new Set()
     function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
     function useStore() {
@@ -1775,13 +1775,40 @@ return {
           h('span', { className: 'ext' }, String(it.ext || '').toUpperCase()),
           h('span', null, it.name))),
         items && items.length === 0
-          ? h('div', { className: 'kyg-hint' }, '（无本机数据图层——目录页签扫描或服务拉取）') : null)
+          ? h('div', { className: 'kyg-hint' }, '（无本机数据图层——目录页签扫描或服务拉取）') : null,
+        store.kyuProject && store.kyuProject.layers && store.kyuProject.layers.length ? h('div', null,
+          h('div', { className: 'kyg-dock-head', style: { marginTop: '6px' } },
+            h('span', null, '工程: ' + (store.kyuProject.name || String(store.kyuProject.kyu).split(/[\\/]/).pop()))),
+          store.kyuProject.layers.map((l, i) => h('div', {
+            key: 'kyu' + i,
+            className: 'kyg-list-item' + (store.path === l.source ? ' kyg-list-item-active' : ''),
+            onClick: () => { store.path = l.source; store.sym = l.style; store.kyu = store.kyuProject.kyu; store.layerId = l.id; props.notify() },
+          },
+            h('span', { className: 'ext' }, l.visible ? '图层' : '隐藏'),
+            h('span', null, l.id + (l.styleMode ? ' · ' + l.styleMode : ''))))) : null)
     }
 
     function Workbench() {
       const s = useStore()
       const [tab, setTab] = React.useState('catalog')
       const rect = useCenterRect()
+      // 顶栏工程选择（第八十四轮）：catalog.list 扫 .kyu（数据库类）→ style.list
+      // 载入图层清单发布 store.kyuProject；Dock 渲染工程图层组（点击=图层+样式+工程接力）
+      const [kyuList, setKyuList] = React.useState([])
+      React.useEffect(() => {
+        host.call('catalog.list', { depth: 3 }).then(r => {
+          if (r && r.ok) setKyuList((r.dbItems || []).filter(it => /\.kyu$/i.test(it.path || it.name)).map(it => it.path))
+        }).catch(() => {})
+      }, [])
+      async function pickProject(kyu) {
+        if (!kyu) { store.kyuProject = null; notify(); return }
+        try {
+          const r = await host.call('style.list', { kyu })
+          store.kyuProject = r && r.ok ? { kyu, name: r.name || '', crs: r.crs || '', layers: r.layers || [] } : { kyu, name: '', crs: '', layers: [] }
+          if (r && r.ok) store.kyu = kyu
+        } catch (e) { store.kyuProject = { kyu, name: '', crs: '', layers: [] } }
+        notify()
+      }
       // 激活即自动展开一次：动态包仅在 kanyu-gis 组合下加载，
       // 加载本身即「切入 GIS 模式」——与静态半（pkg/client.js prevGis 转换边）同 UX
       const autoOpened = React.useRef(false)
@@ -1802,6 +1829,10 @@ return {
           h('span', null, '🧭'),
           h('span', null, '堪舆 GIS 工作台'),
           h('span', { className: 'kyg-badge' }, 'kanyu 内核'),
+          h('select', { className: 'kyg-input', style: { maxWidth: '150px', padding: '1px 4px', fontSize: '11px' }, title: '.kyu 工程选择（载入图层清单到图层坞）',
+            value: s.kyuProject ? s.kyuProject.kyu : '', onChange: e => pickProject(e.target.value) },
+            h('option', { value: '' }, '（无工程）'),
+            kyuList.map(p => h('option', { key: p, value: p }, String(p).split(/[\\/]/).pop()))),
           h('span', { className: 'kyg-title' }),
           h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { store.open = false; notify() } }, '返回会话')),
         h('div', { className: 'kyg-tabs' },

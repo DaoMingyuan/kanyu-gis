@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.80.0] — 2026-08-19
+
+- **顶栏工程选择接 .kyu（第八十四轮）**：工作台顶栏新增工程下拉——
+  `catalog.list` 扫工作区 .kyu（数据库类），选中即 `style.list` 载入工程
+  图层清单并发布 `store.kyuProject`；图层坞（Dock）渲染「工程: <名>」
+  图层组，点击图层行 = 设为当前图层 + 样式/工程路径/图层 id 接力
+  （store.path/sym/kyu/layerId，与目录页签 pickKyuLayer 同语义）。
+  agent-browser 实测：下拉命中 demo.kyu → Dock 出「工程: 组件目录夹具」
+  图层组 → 点击 buildings 图层 → 状态栏当前图层切换。
+- 部署注记：dsh web 以仓根为 cwd 启动后 sandboxPolicy.workspaceRoot =
+  仓根，catalog.list 默认扫描即可命中仓内 .kyu/.geojson（此前 npx 缓存
+  目录作 cwd 时工作区无 GIS 数据）。
+- 测试器 **227→229** / static **170→172**（顶栏工程选择契约键锁双端）。
+
 ## [0.79.0] — 2026-08-19
 
 - **状态栏接真实数据（第八十三轮）**：工作台底部状态栏由静态占位升级为
