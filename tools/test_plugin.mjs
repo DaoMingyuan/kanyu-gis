@@ -1389,6 +1389,15 @@ async function main() {
   check('pkg/client.js identify 浮层定位至此（与动态半同契约）',
     locateKeys.every((k) => pkgClientSrc.includes(k)),
     locateKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 3D 高程夸张系数（2026-08-19 第九十五轮 ArcGIS 垂直夸张语义）：
+  // drawScene3d exag 形参 zScale 乘算 + Tab3d 夸张下拉 ×0.5–×5 + 画布标注
+  const exagKeys = ['exag', 'setExag', '夸张', 'maxH * (typeof exag'];
+  check('client.js 3D 高程夸张系数（zScale 乘算 + 下拉 + 标注）',
+    exagKeys.every((k) => clientSrc.includes(k)),
+    exagKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 3D 高程夸张系数（与动态半同契约）',
+    exagKeys.every((k) => pkgClientSrc.includes(k)),
+    exagKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

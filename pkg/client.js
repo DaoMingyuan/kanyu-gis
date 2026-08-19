@@ -1708,7 +1708,7 @@ h('div', { className: 'kyg-hint' }, msg),
       }
       return [Math.round(conv(hue + 1 / 3) * 255), Math.round(conv(hue) * 255), Math.round(conv(hue - 1 / 3) * 255)]
     }
-    function drawScene3d(cv, data, view) {
+    function drawScene3d(cv, data, view, exag) {
       const g = cv.getContext('2d')
       const W = cv.width, H = cv.height
       const yaw = view && typeof view.yaw === 'number' ? view.yaw : -0.5
@@ -1732,7 +1732,7 @@ h('div', { className: 'kyg-hint' }, msg),
       // 高度归一化（内核 height_scale：最大高度锚定画布 1/4 高）
       let maxH = 0
       data.features.forEach(f => { if (f.height > maxH) maxH = f.height })
-      const zScale = maxH > 0 ? H * 0.25 / maxH : 0
+      const zScale = maxH > 0 ? H * 0.25 / maxH * (typeof exag === 'number' && exag > 0 ? exag : 1) : 0
       const sY = Math.sin(yaw), cY = Math.cos(yaw), sP = Math.sin(pitch)
       const rotate = (gx, gy) => { // 绕画布中心（x 右 y 下）
         const dx = gx - cx, dy = gy - cy
@@ -1790,7 +1790,7 @@ h('div', { className: 'kyg-hint' }, msg),
       g.fillText('堪舆 3D · ' + data.count + ' 要素 · 高度字段 ' + data.heightField +
         (data.colorField ? ' · 着色 ' + data.colorField + '（' + (data.categories || []).length + ' 类）' : '') +
         (data.symbologyMode ? ' · 符号化 ' + data.symbologyMode : '') +
-        ' · 方位角 ' + Math.round(yaw * 180 / Math.PI) + '° 俯仰 ' + Math.round(pitchDeg) + '° · 拖拽旋转', 10, 16)
+        (exag && exag !== 1 ? ' · 夸张 ×' + exag : '') + ' · 方位角 ' + Math.round(yaw * 180 / Math.PI) + '° 俯仰 ' + Math.round(pitchDeg) + '° · 拖拽旋转', 10, 16)
     }
 
     function Tab3d(props) {
@@ -1812,6 +1812,8 @@ h('div', { className: 'kyg-hint' }, msg),
       const [cv, setCv] = React.useState(null)
       // 视角状态（对齐内核 Scene3D：yaw 弧度 / pitch 角度制，拖拽调节）
       const [view, setView] = React.useState({ yaw: -0.5, pitch: 35 })
+      // 高程夸张系数（第九十五轮）：1=真实比例，下拉 ×0.5–×5
+      const [exag, setExag] = React.useState(1)
       // 视角书签 + PNG 导出（2026-08-19 第七十二轮）：书签存当前 yaw/pitch 点击恢复；
       // 导出取画布 toDataURL 触发浏览器下载。
       // 书签持久化（2026-08-19 第七十三轮）：localStorage 按图层路径键控
@@ -1843,7 +1845,7 @@ h('div', { className: 'kyg-hint' }, msg),
       }
       const dragRef = React.useRef(null)
       React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
-      React.useEffect(() => { if (cv && data) drawScene3d(cv, data, view) }, [cv, data, view])
+      React.useEffect(() => { if (cv && data) drawScene3d(cv, data, view, exag) }, [cv, data, view, exag])
       function onDown(e) { dragRef.current = { x: e.clientX, y: e.clientY } }
       function onMove(e) {
         const d = dragRef.current
@@ -1903,6 +1905,9 @@ h('div', { className: 'kyg-hint' }, msg),
         }),
         h('div', { className: 'kyg-row' },
           h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => setView({ yaw: -0.5, pitch: 35 }) }, '复位视角'),
+          h('span', { className: 'kyg-label' }, '夸张'),
+          h('select', { className: 'kyg-input', value: exag, onChange: e => setExag(Number(e.target.value)) },
+            [0.5, 1, 1.5, 2, 3, 5].map(v => h('option', { key: v, value: v }, '×' + v))),
           h('input', { className: 'kyg-input', style: { maxWidth: '22%' }, value: viewName, placeholder: '书签名称（可选）', onChange: e => setViewName(e.target.value) }),
           h('button', { className: 'kyg-btn kyg-btn-sub', onClick: saveView }, '存视角书签'),
           h('button', { className: 'kyg-btn kyg-btn-sub', disabled: !data, onClick: exportPng }, '导出 PNG')),
