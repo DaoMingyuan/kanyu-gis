@@ -1265,6 +1265,12 @@ async function main() {
     skillDlgKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 处理页签工具箱全库表单（2026-08-18 第二十三轮）：ToolboxPanel + toolbox.list/toolbox.run + 分类分组
   const tbKeys = ['ToolboxPanel', 'toolbox.list', 'toolbox.run', 'TB_CAT_CN'];
+  // 分析工具右侧化（2026-08-19 第九十九轮 ArcGIS Pro 工具箱范式）：右侧面板
+  // + ribbon「分析」开关 + TabGp 搜索清单（替代下拉框）
+  const gpRightKeys = ['kyg-right', 'gpOpen', 'setGpOpen', '地理处理', '搜索工具（名称 / id）'];
+  check('client.js 分析工具右侧面板（kyg-right + ribbon 分析开关 + TabGp 工具搜索清单）',
+    gpRightKeys.every((k) => clientSrc.includes(k)),
+    gpRightKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
     tbKeys.every((k) => clientSrc.includes(k)),
     tbKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1514,6 +1520,9 @@ async function main() {
   check('pkg/client.js 技能分析对话框（与动态半同契约）',
     skillDlgKeys.every((k) => pkgClientSrc.includes(k)),
     skillDlgKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 分析工具右侧面板（与动态半同契约）',
+    gpRightKeys.every((k) => pkgClientSrc.includes(k)),
+    gpRightKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

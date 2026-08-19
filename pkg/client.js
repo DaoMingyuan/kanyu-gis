@@ -51,6 +51,7 @@ window.__ModuleLoader__.load({
 .kyg-viewswitch{display:flex;margin-bottom:8px;border:1px solid rgba(255,255,255,.12);border-radius:6px;overflow:hidden;width:max-content;flex:0 0 auto}
 .kyg-viewbtn{background:transparent;border:none;color:inherit;padding:3px 14px;font-size:12px;cursor:pointer}
 .kyg-viewbtn-on{background:#c8614a;color:#fff}
+.kyg-right{width:300px;min-width:300px;border-left:1px solid rgba(255,255,255,.08);overflow-y:auto;padding:10px 12px;flex:0 0 auto}
 .kyg-status{display:flex;gap:18px;padding:5px 14px;border-top:1px solid rgba(255,255,255,.08);
   color:#9aa4b8;font-size:11px;align-items:center}
 .kyg-list-item-active{background:rgba(200,97,74,.18)}
@@ -1041,6 +1042,8 @@ h('div', { className: 'kyg-hint' }, msg),
       const [input, setInput] = React.useState(store.path)
       const [input2, setInput2] = React.useState('')
       const [kv, setKv] = React.useState({})
+      // 工具搜索过滤串（第九十九轮，清单选择替代下拉）
+      const [gpq, setGpq] = React.useState('')
       const [out, setOut] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       React.useEffect(() => {
@@ -1059,9 +1062,16 @@ h('div', { className: 'kyg-hint' }, msg),
         setBusy(false)
       }
       return h('div', null,
-        Field('工具', h('select', { className: 'kyg-input', value: toolId, onChange: e => { setToolId(e.target.value); setKv({}) } },
-          tools.map(t => h('option', { key: t.id, value: t.id }, t.name + ' (' + t.id + ')')),
-          tools.length === 0 ? h('option', { value: 'buffer' }, '缓冲区 (buffer)') : null)),
+        // 工具搜索 + 清单选择（2026-08-19 第九十九轮 ArcGIS Pro 地理处理面板范式：
+        // 顶部搜索框过滤名称/id，清单行点击选定工具，替代下拉框）
+        h('input', { className: 'kyg-input', placeholder: '搜索工具（名称 / id）', value: gpq, onChange: e => setGpq(e.target.value) }),
+        h('div', { className: 'kyg-hint', style: { margin: '6px 0 2px' } }, '精选工具（geoprocess 白名单 ' + (tools.length || '…') + ' 个）'),
+        tools.filter(t => { const q = gpq.trim().toLowerCase(); return !q || String(t.name).toLowerCase().includes(q) || String(t.id).toLowerCase().includes(q) })
+          .map(t => h('div', { key: t.id, className: 'kyg-list-item' + (t.id === toolId ? ' kyg-list-item-active' : ''), onClick: () => { setToolId(t.id); setKv({}) } },
+            h('span', { className: 'ext' }, 'GP'),
+            h('span', null, t.name + ' (' + t.id + ')'))),
+        tools.length === 0 ? h('div', { className: 'kyg-hint' }, '工具清单加载中…') : null,
+        def ? h('div', { className: 'kyg-hint', style: { marginTop: '6px' } }, '当前工具: ' + def.name + (def.two ? '（双输入）' : '')) : null,
         Field('输入', h('input', { className: 'kyg-input', value: input, onChange: e => setInput(e.target.value) })),
         def && def.two ? Field('输入2', h('input', { className: 'kyg-input', value: input2, onChange: e => setInput2(e.target.value) })) : null,
         def && def.params.map(p => Field(p.label, h('input', {
@@ -2005,7 +2015,8 @@ h('div', { className: 'kyg-hint' }, msg),
       // 第九十八轮：3D 收进地图视图 2D/3D 分段切换（hidden 不占 ribbon 页签）
       { id: 'scene3d', name: '3D', grp: '地图视图', icon: 'scene3d', hidden: true, C: Tab3d },
       { id: 'crs', name: '坐标', grp: '分析处理', icon: 'crs', C: TabCrs },
-      { id: 'gp', name: '处理', grp: '分析处理', icon: 'gp', C: TabGp },
+      // 第九十九轮：处理页签收进右侧分析面板（hidden 不占 ribbon），「分析」钮开关
+      { id: 'gp', name: '分析', grp: '分析处理', icon: 'gp', hidden: true, C: TabGp },
       { id: 'edit', name: '编辑', grp: '编辑', icon: 'edit', C: TabEdit },
       { id: 'about', name: '关于', grp: '系统', icon: 'about', C: TabAbout },
     ]
@@ -2165,6 +2176,8 @@ h('div', { className: 'kyg-hint' }, msg),
         const s = useStore()
         const gis = useGisMode()
         const [tab, setTab] = React.useState('catalog')
+        // 右侧分析面板开关（2026-08-19 第九十九轮 ArcGIS Pro 工具箱范式）
+        const [gpOpen, setGpOpen] = React.useState(false)
         const rect = useCenterRect()
         // 顶栏工程选择（第八十四轮）：catalog.list 扫 .kyu（数据库类）→ style.list
         // 载入图层清单发布 store.kyuProject；Dock 渲染工程图层组（点击=图层+样式+工程接力）
@@ -2222,7 +2235,8 @@ h('div', { className: 'kyg-hint' }, msg),
                 TABS.filter(t => t.grp === g && !t.hidden).map(t => h('button', {
                   key: t.id, className: 'kyg-tab' + (t.id === tab ? ' kyg-tab-active' : ''),
                   onClick: () => setTab(t.id),
-                }, kanyuIcon(t.icon), h('span', null, t.name)))),
+                }, kanyuIcon(t.icon), h('span', null, t.name))),
+                g === '分析处理' ? h('button', { key: 'gp-panel', className: 'kyg-tab' + (gpOpen ? ' kyg-tab-active' : ''), title: '地理处理工具箱（右侧面板）', onClick: () => setGpOpen(!gpOpen) }, kanyuIcon('gp'), h('span', null, '分析')) : null),
               h('div', { className: 'kyg-grp-label' }, g)))),
           h('div', { className: 'kyg-main' },
             h(Dock, { store: s, notify }),
@@ -2232,7 +2246,13 @@ h('div', { className: 'kyg-hint' }, msg),
               tab === 'map' || tab === 'scene3d' ? h('div', { className: 'kyg-viewswitch' },
                 h('button', { className: 'kyg-viewbtn' + (tab === 'map' ? ' kyg-viewbtn-on' : ''), onClick: () => setTab('map') }, '2D 地图'),
                 h('button', { className: 'kyg-viewbtn' + (tab === 'scene3d' ? ' kyg-viewbtn-on' : ''), onClick: () => setTab('scene3d') }, '3D 场景')) : null,
-              h(cur.C, { store: s, notify }))),
+              h(cur.C, { store: s, notify })),
+            // 右侧分析面板（2026-08-19 第九十九轮，ArcGIS Pro 地理处理工具箱右侧停靠范式）
+            gpOpen ? h('div', { className: 'kyg-right' },
+              h('div', { className: 'kyg-dock-head' },
+                h('span', null, '地理处理'),
+                h('button', { className: 'kyg-btn kyg-btn-sub', style: { padding: '1px 8px', fontSize: '11px' }, onClick: () => setGpOpen(false) }, '收起')),
+              h(TabGp, { store: s, notify })) : null),
           h('div', { className: 'kyg-status' },
             h('span', null, '页签: ' + cur.name),
             base ? h('span', null, '当前图层: ' + base) : h('span', null, '未选图层'),
