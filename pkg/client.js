@@ -62,7 +62,12 @@ window.__ModuleLoader__.load({
 .kyg-pre{background:rgba(0,0,0,.35);border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.5;
   white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto;margin:6px 0;font-family:Consolas,monospace}
 .kyg-img{max-width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.12);margin-top:6px}
-.kyg-map-stage{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px;padding:6px;text-align:center}
+.kyg-map-stage{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px;padding:6px;text-align:center;position:relative}
+.kyg-identify{position:absolute;z-index:6;min-width:180px;max-width:280px;background:rgba(16,22,32,.96);border:1px solid rgba(255,255,255,.18);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.45);text-align:left;transform:translate(-50%,14px)}
+.kyg-identify-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;font-size:12px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1)}
+.kyg-identify-body{max-height:180px;overflow:auto;padding:4px 8px 6px}
+.kyg-identify-row{display:flex;gap:8px;font-size:12px;line-height:1.5}
+.kyg-identify-k{color:#8FB3CC;min-width:60px;flex:none}
 .kyg-map-view{overflow:hidden;cursor:grab}
 .kyg-map-view:active{cursor:grabbing}
 .kyg-canvas{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px}
@@ -478,6 +483,9 @@ window.__ModuleLoader__.load({
       const [baseUrl, setBaseUrl] = React.useState('https://ows.terrestris.de/osm/service')
       const [baseLayer, setBaseLayer] = React.useState('OSM-WMS')
       const [baseImg, setBaseImg] = React.useState(null)
+      // 要素点选浮层 + 拖拽抑制（第九十一轮）：拖拽超 4px 抑制随后的 click 误触发
+      const [identify, setIdentify] = React.useState(null)
+      const suppRef = React.useRef(false)
       // 画布缩放/平移（第八十七轮）：滚轮 1.2 倍步进（0.5–16×）、拖拽平移、
       // 双击复位；倍率经 store.mapZoom 发布，状态栏比例尺 = 渲染比例尺 ÷ 倍率
       const [zf, setZf] = React.useState(1)
@@ -504,11 +512,42 @@ window.__ModuleLoader__.load({
         if (zf <= 1) return
         e.preventDefault()
         dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }
-        const mv = (ev) => { const d = dragRef.current; if (!d) return; setPan({ x: d.px + ev.clientX - d.x, y: d.py + ev.clientY - d.y }) }
-        const up = () => { dragRef.current = null; window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
+        const mv = (ev) => { const d = dragRef.current; if (!d) return; if (Math.abs(ev.clientX - d.x) + Math.abs(ev.clientY - d.y) > 4) suppRef.current = true; setPan({ x: d.px + ev.clientX - d.x, y: d.py + ev.clientY - d.y }) }
+        const up = () => { dragRef.current = null; setTimeout(() => { suppRef.current = false }, 80); window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
         window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up)
       }
       function onMapReset() { setZf(1); setPan({ x: 0, y: 0 }); pubZoom(1) }
+      // 要素点选查询（2026-08-19 第九十一轮 identify）：单击画布 → img 像素分数
+      //（getBoundingClientRect 已含缩放/平移变换）→ store.mapExtent 反算地图坐标
+      //（y 顶=maxy 翻转）→ data.identify；命中弹属性浮层 + store.selFeature 联动状态栏
+      async function onMapIdentify(e) {
+        if (suppRef.current || !store.mapExtent || !path) return
+        const imgEl = e.currentTarget.querySelector('.kyg-img')
+        if (!imgEl) return
+        const r = imgEl.getBoundingClientRect()
+        if (!r.width || !r.height) return
+        const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height
+        if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return
+        const ex = store.mapExtent
+        const mx = ex[0] + fx * (ex[2] - ex[0])
+        const my = ex[3] - fy * (ex[3] - ex[1])
+        const tol = 6 / r.width * (ex[2] - ex[0])
+        try {
+          const res = await hostCall('data.identify', { path: store.path || path, x: mx, y: my, tol })
+          if (res && res.ok && res.index >= 0) {
+            store.selFeature = res.index
+            const sr = stageRef.current ? stageRef.current.getBoundingClientRect() : r
+            setIdentify({ x: e.clientX - sr.left, y: e.clientY - sr.top, props: res.properties || {}, index: res.index, geom: res.geomType })
+            setMsg('点选命中要素 #' + res.index + '（' + res.geomType + '，距离 ' + res.distance + '）')
+          } else {
+            store.selFeature = -1
+            setIdentify(null)
+            setMsg(res && res.error ? '点选查询: ' + res.error : '点选无命中')
+          }
+          if (props.notify) props.notify()
+        } catch (e2) { setMsg('RPC 失败: ' + (e2 && e2.message || e2)) }
+      }
+      function onIdentifyClose() { setIdentify(null); store.selFeature = -1; if (props.notify) props.notify() }
       // 滚轮须非 passive 监听（React 根代理 wheel 为 passive，preventDefault 不生效）
       React.useEffect(() => {
         const el = viewRef.current
@@ -577,12 +616,13 @@ window.__ModuleLoader__.load({
         hostCall('data.info', { path: p }).then(ir => {
           try {
             const j = JSON.parse((ir && ir.stdout) || '{}')
+            store.mapExtent = j.extent || null
             store.mapInfo = {
               count: j.feature_count != null ? j.feature_count : null,
               crs: /geojson/i.test(String(j.format || '')) ? 'EPSG:4326' : '未声明',
               scale: approxScale(j.extent, w),
             }
-          } catch (e) { store.mapInfo = null }
+          } catch (e) { store.mapInfo = null; store.mapExtent = null }
           if (props.notify) props.notify()
         }).catch(() => {})
       }
@@ -678,11 +718,14 @@ window.__ModuleLoader__.load({
           h('button', { className: 'kyg-btn', disabled: busy || !kyuPath, onClick: styleLoad }, '读取样式'),
           h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
         h('div', { className: 'kyg-hint' }, msg),
-        img ? h('div', { className: 'kyg-map-stage' },
-          h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位', onMouseDown: onMapDown, onDoubleClick: onMapReset },
+        img ? h('div', { ref: stageRef, className: 'kyg-map-stage' },
+          h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位 · 单击点选要素', onMouseDown: onMapDown, onDoubleClick: onMapReset, onClick: onMapIdentify },
             h('div', { style: { position: 'relative', display: 'inline-block', maxWidth: '100%', transform: 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zf + ')', transformOrigin: 'center center', transition: dragRef.current ? 'none' : 'transform .12s' } },
               baseImg ? h('img', { src: baseImg, alt: 'WMS 底图', draggable: false, style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '8px' } }) : null,
-              h('img', { className: 'kyg-img', src: img, alt: '地图渲染', draggable: false, style: { position: 'relative', display: 'block', margin: 0 } })))) : null,
+              h('img', { className: 'kyg-img', src: img, alt: '地图渲染', draggable: false, style: { position: 'relative', display: 'block', margin: 0 } }))),
+                            identify ? h('div', { className: 'kyg-identify', style: { left: identify.x + 'px', top: identify.y + 'px' } },
+                h('div', { className: 'kyg-identify-head' }, h('span', null, '要素 #' + identify.index + ' · ' + identify.geom), h('button', { className: 'kyg-btn kyg-btn-sub', title: '关闭', onClick: onIdentifyClose }, '×')),
+                Object.keys(identify.props).length ? h('div', { className: 'kyg-identify-body' }, Object.keys(identify.props).map(k => h('div', { className: 'kyg-identify-row', key: k }, h('span', { className: 'kyg-identify-k' }, k), h('span', null, String(identify.props[k]))))) : h('div', { className: 'kyg-identify-body' }, h('div', { className: 'kyg-hint' }, '（无属性）'))) : null) : null,
       )
     }
 
@@ -1843,7 +1886,7 @@ window.__ModuleLoader__.load({
       ctx.effect(() => () => { styleEl.remove() }, 'kanyu-gis: styles')
 
       // ------ 包级共享状态（头部按钮 ↔ 全屏工作台） ------
-      const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, selVerts: 0, selFeature: -1, kyuProject: null, scanDir: '' }
+      const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, mapExtent: null, selVerts: 0, selFeature: -1, kyuProject: null, scanDir: '' }
       const listeners = new Set()
       function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
       function useStore() {

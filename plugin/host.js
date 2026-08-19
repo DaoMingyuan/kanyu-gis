@@ -280,6 +280,70 @@ return {
       return { ok: true, source: p, fields, rows, shown: rows.length, total: feats.length }
     }
 
+    // 要素点选查询（2026-08-19 第九十一轮 identify 语义）：纯 fs 读 GeoJSON，
+    // 面=点在面内（射线法奇偶规则，含洞排除）、线=点到线段距离、点=最近点；
+    // 容差 tol 由调用方按地图单位传入。不经 CLI（内核无空间点选命令），
+    // --static 模式与无 CLI 环境亦可覆盖；多要素取「面内优先、距离最近」。
+    async function dataIdentify(path, x, y, tol) {
+      if (!fs) return { ok: false, error: 'fs service 不可用' }
+      const p = await procPath(path)
+      let fc
+      try {
+        const target = await fs.resolve(p)
+        fc = JSON.parse(await fs.readText(target))
+      } catch (e) { return { ok: false, error: '读取/解析失败（点选查询目前支持 GeoJSON）: ' + String(e && e.message || e) } }
+      const feats = fc && Array.isArray(fc.features) ? fc.features : []
+      const px = Number(x), py = Number(y)
+      const t = Math.max(0, Number(tol) || 0)
+      if (!isFinite(px) || !isFinite(py)) return { ok: false, error: '坐标非法' }
+      function inRing(ring) {
+        let inside = false
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1]
+          if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside
+        }
+        return inside
+      }
+      function inPolygon(poly) {
+        if (!poly.length || !inRing(poly[0])) return false
+        for (let i = 1; i < poly.length; i++) if (inRing(poly[i])) return false
+        return true
+      }
+      function distSeg(a, b) {
+        const dx = b[0] - a[0], dy = b[1] - a[1]
+        const L2 = dx * dx + dy * dy
+        const k = L2 > 0 ? Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / L2)) : 0
+        return Math.hypot(px - (a[0] + k * dx), py - (a[1] + k * dy))
+      }
+      function distLine(line) {
+        let d = Infinity
+        for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, distSeg(line[i], line[i + 1]))
+        return d
+      }
+      let best = null
+      feats.forEach((f, i) => {
+        const g = f && f.geometry
+        if (!g || !Array.isArray(g.coordinates)) return
+        const t0 = String(g.type || '')
+        let d = Infinity, inside = false, gt = ''
+        if (t0 === 'Point') { d = Math.hypot(g.coordinates[0] - px, g.coordinates[1] - py); gt = 'Point' }
+        else if (t0 === 'MultiPoint') { g.coordinates.forEach(c => { d = Math.min(d, Math.hypot(c[0] - px, c[1] - py)) }); gt = 'MultiPoint' }
+        else if (t0 === 'LineString') { d = distLine(g.coordinates); gt = 'LineString' }
+        else if (t0 === 'MultiLineString') { g.coordinates.forEach(l => { d = Math.min(d, distLine(l)) }); gt = 'MultiLineString' }
+        else if (t0 === 'Polygon') { inside = inPolygon(g.coordinates); d = inside ? 0 : distLine(g.coordinates[0] || []); gt = 'Polygon' }
+        else if (t0 === 'MultiPolygon') {
+          g.coordinates.forEach(poly => { const ins = inPolygon(poly); const dd = ins ? 0 : distLine(poly[0] || []); if (ins) inside = true; d = Math.min(d, dd) })
+          gt = 'MultiPolygon'
+        } else return
+        if (!(inside || d <= t)) return
+        if (!best || (inside && !best.inside) || (inside === best.inside && d < best.distance))
+          best = { index: i, distance: d, geomType: gt, inside }
+      })
+      if (!best) return { ok: true, index: -1, properties: null, distance: null, geomType: null }
+      const f = feats[best.index]
+      return { ok: true, index: best.index, properties: (f && f.properties) || {}, distance: Math.round(best.distance * 1e6) / 1e6, geomType: best.geomType }
+    }
+
     // ------ 能力 1：地图面板（离屏渲染 → base64 PNG 回传 Client） ------
     // 符号化编辑模型 → StyleRule 投影（第五十二轮，对齐壳层 symbology.rs
     // LayerSymbology→to_style_rule；.kyu 持久化用本模型，CLI 直通用 StyleRule）。
@@ -1358,6 +1422,7 @@ return {
     harness.handle('data.validate', async (a) => dataValidate(a && a.path))
     harness.handle('data.preview', async (a) => dataPreview(a && a.path, a && a.limit))
     harness.handle('data.calc', async (a) => dataCalc(a && a.path, a && a.target, a && a.expr, a && a.output))
+    harness.handle('data.identify', async (a) => dataIdentify(a && a.path, a && a.x, a && a.y, a && a.tol))
     harness.handle('render.map', async (a) => renderMap(a && a.path, a && a.theme, a && a.width, a && a.height, a && a.style, a && a.symbology, !!(a && a.transparent)))
     harness.handle('render.layout', async (a) => layoutPreview(a))
     harness.handle('catalog.readImage', async (a) => readImagePng(a && a.path))

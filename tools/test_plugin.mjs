@@ -143,7 +143,7 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（32 个）', rpc.size === 32, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（33 个）', rpc.size === 33, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（9 个 kanyu_*）', tools.size === 9, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
@@ -366,6 +366,14 @@ async function main() {
     prev.ok && prev.total === 4 && prev.shown === 4 && prev.fields.includes('height')
       && Array.isArray(prev.rows) && prev.rows.length === 4 && prev.rows.every((r) => r.length === prev.fields.length),
     'fields=' + (prev.fields || []).join(','));
+  // 要素点选查询（2026-08-19 第九十一轮）：data.identify 纯 fs 空间点选——
+  // 命中示例大厦A（index 0，properties 回执）+ 域外点选 index:-1
+  const idn = await callRpc('data.identify', { path: EXAMPLE, x: 116.3914, y: 39.9072, tol: 0.001 });
+  check('data.identify：点选命中要素（index 0 + properties 回执 + Point 类型）',
+    idn.ok && idn.index === 0 && idn.geomType === 'Point' && idn.properties && idn.properties.name === '示例大厦A',
+    JSON.stringify(idn).slice(0, 160));
+  const idnMiss = await callRpc('data.identify', { path: EXAMPLE, x: 116.60, y: 40.20, tol: 0.0001 });
+  check('data.identify：域外点选无命中（index:-1）', idnMiss.ok && idnMiss.index === -1);
   const tData = tools.get('kanyu_data');
   const prevText = tData && await tData.execute({ action: 'preview', path: EXAMPLE });
   check('动态工具 kanyu_data(preview)：属性表文本（字段头 + 行）',
@@ -1338,6 +1346,16 @@ async function main() {
   check('pkg/client.js 工程下拉接目录自定义扫描目录（与动态半同契约）',
     scanDirKeys.every((k) => pkgClientSrc.includes(k)),
     scanDirKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 地图画布要素点选查询（2026-08-19 第九十一轮 identify）：store.mapExtent
+  // 随渲染发布，画布单击 → 像素分数反算地图坐标 → data.identify RPC →
+  // 属性浮层（kyg-identify）+ store.selFeature 联动状态栏；拖拽超 4px 抑制 click
+  const identifyKeys = ['data.identify', 'onMapIdentify', 'store.mapExtent', 'kyg-identify', '要素点选查询', 'suppRef', '单击点选要素'];
+  check('client.js 地图画布要素点选查询（identify 浮层 + 状态栏联动）',
+    identifyKeys.every((k) => clientSrc.includes(k)),
+    identifyKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 地图画布要素点选查询（与动态半同契约）',
+    identifyKeys.every((k) => pkgClientSrc.includes(k)),
+    identifyKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

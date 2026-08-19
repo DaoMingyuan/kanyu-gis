@@ -1,5 +1,19 @@
 # dsh/ 组件变更记录
 
+## [0.86.0] — 2026-08-19
+
+- **地图画布要素点选查询（第九十一轮 identify 语义）**：host 新增
+  `data.identify` RPC——纯 fs 读 GeoJSON 空间点选（面=射线法点在面内
+  含洞排除、线=点到线段距离、点=最近距；容差 `tol` 按地图单位，多要素
+  面内优先/距离最近；不经 CLI，--static 与无 CLI 环境同覆盖）。双端
+  Client：渲染成功发布 `store.mapExtent`，画布单击 → img 像素分数
+  （getBoundingClientRect 已含缩放/平移变换）→ 范围反算地图坐标
+  （y 顶=maxy 翻转）→ 属性浮层（kyg-identify 卡片）+ `store.selFeature`
+  联动状态栏「选中要素 #N」；拖拽超 4px 抑制 click 误触发；舞台 div
+  补挂 stageRef（八十二轮量宽渲染落地）。测试器 244/244（static
+  187/187），agent-browser 3080 实测单击命中示例大厦A（要素 #0 浮层
+  三属性 + 状态栏联动）。
+
 ## [0.85.0] — 2026-08-19
 
 - **工程下拉接目录自定义扫描目录（第八十九轮）**：目录页签 scan 成功即发
