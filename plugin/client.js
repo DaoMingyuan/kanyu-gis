@@ -50,6 +50,8 @@ const CSS = `
   white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto;margin:6px 0;font-family:Consolas,monospace}
 .kyg-img{max-width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.12);margin-top:6px}
 .kyg-map-stage{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px;padding:6px;text-align:center}
+.kyg-map-view{overflow:hidden;cursor:grab}
+.kyg-map-view:active{cursor:grabbing}
 .kyg-canvas{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px}
 .kyg-list-item{padding:5px 8px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:baseline}
 .kyg-list-item:hover{background:rgba(255,255,255,.07)}
@@ -453,6 +455,36 @@ function TabMap(props) {
   const [baseUrl, setBaseUrl] = React.useState('https://ows.terrestris.de/osm/service')
   const [baseLayer, setBaseLayer] = React.useState('OSM-WMS')
   const [baseImg, setBaseImg] = React.useState(null)
+  // 画布缩放/平移（第八十七轮）：滚轮 1.2 倍步进（0.5–16×）、拖拽平移、
+  // 双击复位；倍率经 store.mapZoom 发布，状态栏比例尺 = 渲染比例尺 ÷ 倍率
+  const [zf, setZf] = React.useState(1)
+  const [pan, setPan] = React.useState({ x: 0, y: 0 })
+  const dragRef = React.useRef(null)
+  const viewRef = React.useRef(null)
+  function pubZoom(z) { store.mapZoom = z; if (props.notify) props.notify() }
+  function onMapWheel(e) {
+    const z = Math.min(16, Math.max(0.5, Math.round(zf * (e.deltaY < 0 ? 1.2 : 1 / 1.2) * 100) / 100))
+    if (z === zf) return
+    setZf(z); if (z <= 1) setPan({ x: 0, y: 0 })
+    pubZoom(z)
+  }
+  function onMapDown(e) {
+    if (zf <= 1) return
+    e.preventDefault()
+    dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }
+    const mv = (ev) => { const d = dragRef.current; if (!d) return; setPan({ x: d.px + ev.clientX - d.x, y: d.py + ev.clientY - d.y }) }
+    const up = () => { dragRef.current = null; window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up)
+  }
+  function onMapReset() { setZf(1); setPan({ x: 0, y: 0 }); pubZoom(1) }
+  // 滚轮须非 passive 监听（React 根代理 wheel 为 passive，preventDefault 不生效）
+  React.useEffect(() => {
+    const el = viewRef.current
+    if (!el) return
+    const wh = (e) => { e.preventDefault(); onMapWheel(e) }
+    el.addEventListener('wheel', wh, { passive: false })
+    return () => el.removeEventListener('wheel', wh)
+  }, [zf, pan])
   React.useEffect(() => { if (store.path) setPath(store.path) }, [store.path])
   // 目录 .kyu 图层接力（第五十五轮）：store.sym 快照回填符号化表单 +
   // 工程路径/图层 id 回填写入区（闭环：目录→地图→写入工程）
@@ -481,7 +513,7 @@ function TabMap(props) {
     setBusy(true); setMsg('渲染中（kanyu render map）…'); setImg(null)
     try {
       const r = await host.call('render.map', { path: usePath, theme, width: w, height: Math.round(w * 0.62), symbology: sym, transparent: baseOn })
-      if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')); publishMapInfo(usePath, w); if (baseOn) loadBasemap(usePath, w, Math.round(w * 0.62)); else setBaseImg(null) }
+      if (r && r.pngBase64) { setImg('data:image/png;base64,' + r.pngBase64); setMsg('落盘: ' + r.out + (sym ? ' · 符号化: ' + sym.mode + (sym.field ? '(' + sym.field + ')' : '') : '')); publishMapInfo(usePath, w); setZf(1); setPan({ x: 0, y: 0 }); store.mapZoom = 1; if (baseOn) loadBasemap(usePath, w, Math.round(w * 0.62)); else setBaseImg(null) }
       else setMsg(fmtJson(r && r.run ? { ok: r.run.ok, exit: r.run.exitCode, stderr: String(r.run.stderr).slice(0, 500) } : r))
     } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
     setBusy(false)
@@ -615,9 +647,10 @@ function TabMap(props) {
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
     h('div', { className: 'kyg-hint' }, msg),
     img ? h('div', { className: 'kyg-map-stage' },
-      h('div', { style: { position: 'relative', display: 'inline-block', maxWidth: '100%' } },
-        baseImg ? h('img', { src: baseImg, alt: 'WMS 底图', style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '8px' } }) : null,
-        h('img', { className: 'kyg-img', src: img, alt: '地图渲染', style: { position: 'relative', display: 'block', margin: 0 } }))) : null,
+      h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位', onMouseDown: onMapDown, onDoubleClick: onMapReset },
+        h('div', { style: { position: 'relative', display: 'inline-block', maxWidth: '100%', transform: 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zf + ')', transformOrigin: 'center center', transition: dragRef.current ? 'none' : 'transform .12s' } },
+          baseImg ? h('img', { src: baseImg, alt: 'WMS 底图', draggable: false, style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '8px' } }) : null,
+          h('img', { className: 'kyg-img', src: img, alt: '地图渲染', draggable: false, style: { position: 'relative', display: 'block', margin: 0 } })))) : null,
   )
 }
 
@@ -1915,7 +1948,8 @@ return {
           base ? h('span', null, '当前图层: ' + base) : h('span', null, '未选图层'),
           s.mapInfo && s.mapInfo.count != null ? h('span', null, '要素: ' + s.mapInfo.count) : null,
           s.mapInfo ? h('span', null, '坐标系: ' + s.mapInfo.crs) : null,
-          s.mapInfo && s.mapInfo.scale ? h('span', { title: '按范围宽与图像像素宽推算（96dpi ≈ 0.28mm/px）' }, '比例尺≈1:' + Number(s.mapInfo.scale).toLocaleString()) : null,
+          s.mapInfo && s.mapInfo.scale ? h('span', { title: '按范围宽与图像像素宽推算（96dpi ≈ 0.28mm/px）；随画布缩放重算' }, '比例尺≈1:' + Number(Math.max(1, Math.round(s.mapInfo.scale / (s.mapZoom || 1)))).toLocaleString()) : null,
+          s.mapZoom && s.mapZoom !== 1 ? h('span', null, '缩放: ×' + s.mapZoom.toFixed(2)) : null,
           s.selVerts > 0 ? h('span', null, '已选顶点: ' + s.selVerts) : null,
           s.selFeature >= 0 ? h('span', null, '选中要素 #' + s.selFeature) : null,
           h('span', null, '模式: GIS（kanyu-gis）')),

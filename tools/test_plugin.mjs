@@ -1310,6 +1310,16 @@ async function main() {
   check('pkg/client.js GIS 界面重排 + 堪舆手绘图标（与动态半同契约）',
     ribbonKeys.every((k) => pkgClientSrc.includes(k)),
     ribbonKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 地图画布缩放平移（2026-08-19 第八十七轮）：滚轮 1.2× 步进（非 passive
+  // 监听）+ 拖拽平移 + 双击复位，倍率经 store.mapZoom 发布，状态栏
+  // 比例尺 = 渲染比例尺 ÷ 倍率并显示缩放档
+  const zoomKeys = ['kyg-map-view', 'mapZoom', 'onMapWheel', 'onMapReset', '滚轮缩放 · 拖拽平移 · 双击复位', '缩放: ×'];
+  check('client.js 地图画布缩放/平移/复位 + 状态栏比例尺随缩放重算',
+    zoomKeys.every((k) => clientSrc.includes(k)),
+    zoomKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 地图画布缩放/平移/复位（与动态半同契约）',
+    zoomKeys.every((k) => pkgClientSrc.includes(k)),
+    zoomKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
