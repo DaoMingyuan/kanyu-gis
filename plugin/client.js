@@ -57,6 +57,7 @@ const CSS = `
 .kyg-identify-k{color:#8FB3CC;min-width:60px;flex:none}
 .kyg-map-view{overflow:hidden;cursor:grab}
 .kyg-map-view:active{cursor:grabbing}
+.kyg-measure{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5}
 .kyg-canvas{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px}
 .kyg-list-item{padding:5px 8px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:baseline}
 .kyg-list-item:hover{background:rgba(255,255,255,.07)}
@@ -464,6 +465,10 @@ function TabMap(props) {
   const [identify, setIdentify] = React.useState(null)
   const suppRef = React.useRef(false)
   const curRef = React.useRef(0)
+  // 画布量测（第九十三轮）：off/length/area + 攒点列 [fx,fy,mx,my] + 双击冻结
+  const [measureMode, setMeasureMode] = React.useState('off')
+  const [measurePts, setMeasurePts] = React.useState([])
+  const [measureDone, setMeasureDone] = React.useState(false)
   // 画布缩放/平移（第八十七轮）：滚轮 1.2 倍步进（0.5–16×）、拖拽平移、
   // 双击复位；倍率经 store.mapZoom 发布，状态栏比例尺 = 渲染比例尺 ÷ 倍率
   const [zf, setZf] = React.useState(1)
@@ -545,6 +550,58 @@ function TabMap(props) {
     if (props.notify) props.notify()
   }
   function onMapLeave() { if (store.mapCursor) { store.mapCursor = null; if (props.notify) props.notify() } }
+  // 画布量测（2026-08-19 第九十三轮 ArcGIS 测量语义）：量测模式下画布单击攒点
+  //（不触发 identify），折线实时累算；双击结束冻结结果，清除钮重来。
+  // EPSG:4326 用 haversine 距离 + 等距圆柱投影 shoelace 面积；其余平面欧氏
+  //（内核 crs::measure 测地线度量是整图层语义，与画布交互量测互补）
+  function onMapClick(e) {
+    if (suppRef.current) return
+    if (measureMode !== 'off' && !measureDone) { addMeasurePt(e); return }
+    onMapIdentify(e)
+  }
+  function addMeasurePt(e) {
+    if (!store.mapExtent) return
+    const imgEl = e.currentTarget.querySelector('.kyg-img')
+    if (!imgEl) return
+    const r = imgEl.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height
+    if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return
+    const ex = store.mapExtent
+    setMeasurePts(prev => prev.concat([[fx, fy, ex[0] + fx * (ex[2] - ex[0]), ex[3] - fy * (ex[3] - ex[1])]]))
+  }
+  function onMapDblClick() { if (measureMode !== 'off' && measurePts.length >= 2) setMeasureDone(true); else onMapReset() }
+  function geoDist(a, b) {
+    if (store.mapInfo && store.mapInfo.crs === 'EPSG:4326') {
+      const R = 6371008.8, rad = Math.PI / 180
+      const dLat = (b[3] - a[3]) * rad, dLon = (b[2] - a[2]) * rad
+      const s = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a[3] * rad) * Math.cos(b[3] * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)))
+    }
+    return Math.hypot(b[2] - a[2], b[3] - a[3])
+  }
+  function measureText() {
+    if (measureMode === 'off') return null
+    const is4326 = store.mapInfo && store.mapInfo.crs === 'EPSG:4326'
+    const tail = measureDone ? '（已定）' : ' · 单击续点，双击结束'
+    if (measureMode === 'length' && measurePts.length >= 2) {
+      let L = 0
+      for (let i = 0; i + 1 < measurePts.length; i++) L += geoDist(measurePts[i], measurePts[i + 1])
+      return '距离: ' + (is4326 && L >= 1000 ? (L / 1000).toFixed(2) + ' km' : L.toFixed(1) + (is4326 ? ' m' : '')) + (is4326 ? '' : '（平面单位）') + tail
+    }
+    if (measureMode === 'area' && measurePts.length >= 3) {
+      const lat0 = measurePts.reduce((s2, p) => s2 + p[3], 0) / measurePts.length * Math.PI / 180
+      const kx = is4326 ? 111320 * Math.cos(lat0) : 1, ky = is4326 ? 110540 : 1
+      let A = 0
+      for (let i = 0; i < measurePts.length; i++) {
+        const p = measurePts[i], q2 = measurePts[(i + 1) % measurePts.length]
+        A += p[2] * kx * q2[3] * ky - q2[2] * kx * p[3] * ky
+      }
+      A = Math.abs(A) / 2
+      return '面积: ' + (is4326 && A >= 1e6 ? (A / 1e6).toFixed(2) + ' km²' : A.toFixed(1) + (is4326 ? ' m²' : '')) + (is4326 ? '' : '（平面单位）') + tail
+    }
+    return '单击画布开始攒点'
+  }
   // 滚轮须非 passive 监听（React 根代理 wheel 为 passive，preventDefault 不生效）
   React.useEffect(() => {
     const el = viewRef.current
@@ -714,12 +771,22 @@ function TabMap(props) {
       h('input', { className: 'kyg-input', style: { width: '110px' }, placeholder: '图层 id', value: layerId, onChange: e => setLayerId(e.target.value) }),
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath, onClick: styleLoad }, '读取样式'),
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
-    h('div', { className: 'kyg-hint' }, msg),
+        h('div', { className: 'kyg-row' },
+      h('span', { className: 'kyg-label' }, '量测'),
+      h('select', { className: 'kyg-input', value: measureMode, onChange: e => { setMeasureMode(e.target.value); setMeasurePts([]); setMeasureDone(false) } },
+        h('option', { value: 'off' }, '关闭'), h('option', { value: 'length' }, '距离'), h('option', { value: 'area' }, '面积')),
+      measurePts.length ? h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { setMeasurePts([]); setMeasureDone(false) } }, '清除量测') : null,
+      measureText() ? h('span', { className: 'kyg-label' }, measureText()) : null),
+h('div', { className: 'kyg-hint' }, msg),
     img ? h('div', { ref: stageRef, className: 'kyg-map-stage' },
-      h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位 · 单击点选要素', onMouseDown: onMapDown, onDoubleClick: onMapReset, onClick: onMapIdentify, onMouseMove: onMapMove, onMouseLeave: onMapLeave },
+      h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位 · 单击点选要素', onMouseDown: onMapDown, onDoubleClick: onMapDblClick, onClick: onMapClick, onMouseMove: onMapMove, onMouseLeave: onMapLeave },
         h('div', { style: { position: 'relative', display: 'inline-block', maxWidth: '100%', transform: 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zf + ')', transformOrigin: 'center center', transition: dragRef.current ? 'none' : 'transform .12s' } },
           baseImg ? h('img', { src: baseImg, alt: 'WMS 底图', draggable: false, style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '8px' } }) : null,
-          h('img', { className: 'kyg-img', src: img, alt: '地图渲染', draggable: false, style: { position: 'relative', display: 'block', margin: 0 } }))),
+          h('img', { className: 'kyg-img', src: img, alt: '地图渲染', draggable: false, style: { position: 'relative', display: 'block', margin: 0 } }),
+            measurePts.length ? h('svg', { className: 'kyg-measure', viewBox: '0 0 1 1', preserveAspectRatio: 'none' },
+              h('polyline', { points: measurePts.map(p => p[0] + ',' + p[1]).join(' '), fill: measureMode === 'area' && measurePts.length >= 3 ? 'rgba(45,106,94,.25)' : 'none', stroke: '#D9A23C', strokeWidth: 2, vectorEffect: 'non-scaling-stroke' }),
+              measurePts.map((p, i) => h('circle', { key: i, cx: p[0], cy: p[1], r: 0.004, fill: '#D9A23C' }))) : null
+)),
                     identify ? h('div', { className: 'kyg-identify', style: { left: identify.x + 'px', top: identify.y + 'px' } },
             h('div', { className: 'kyg-identify-head' }, h('span', null, '要素 #' + identify.index + ' · ' + identify.geom), h('button', { className: 'kyg-btn kyg-btn-sub', title: '关闭', onClick: onIdentifyClose }, '×')),
             Object.keys(identify.props).length ? h('div', { className: 'kyg-identify-body' }, Object.keys(identify.props).map(k => h('div', { className: 'kyg-identify-row', key: k }, h('span', { className: 'kyg-identify-k' }, k), h('span', null, String(identify.props[k]))))) : h('div', { className: 'kyg-identify-body' }, h('div', { className: 'kyg-hint' }, '（无属性）'))) : null) : null,

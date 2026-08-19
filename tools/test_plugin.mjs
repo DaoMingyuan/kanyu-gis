@@ -1366,6 +1366,16 @@ async function main() {
   check('pkg/client.js 状态栏鼠标坐标实时跟踪（与动态半同契约）',
     cursorKeys.every((k) => pkgClientSrc.includes(k)),
     cursorKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 地图画布量测（2026-08-19 第九十三轮 ArcGIS 测量语义）：量测模式下单击
+  // 攒点（onMapClick 分派，不触发 identify）+ SVG 覆盖层折线/多边形 +
+  // haversine/shoelace 实时累算 + 双击冻结（onMapDblClick）+ 清除重来
+  const measureKeys = ['measureMode', 'measurePts', 'onMapDblClick', 'kyg-measure', '量测', 'haversine', 'onMapClick'];
+  check('client.js 地图画布量测（测距/测面攒点 + SVG 覆盖层 + 双击冻结）',
+    measureKeys.every((k) => clientSrc.includes(k)),
+    measureKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 地图画布量测（与动态半同契约）',
+    measureKeys.every((k) => pkgClientSrc.includes(k)),
+    measureKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
