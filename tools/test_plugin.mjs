@@ -1329,6 +1329,15 @@ async function main() {
   check('pkg/client.js 滚轮缩放指针为锚（与动态半同契约）',
     anchorKeys.every((k) => pkgClientSrc.includes(k)),
     anchorKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 工程下拉接目录自定义扫描目录（2026-08-19 第八十九轮）：目录页签 scan
+  // 成功发布 store.scanDir，Workbench 工程下拉随 scanDir 重扫 .kyu
+  const scanDirKeys = ['scanDir', 'dir: s.scanDir || undefined', '[s.scanDir]'];
+  check('client.js 工程下拉接目录自定义扫描目录（store.scanDir 联动重扫）',
+    scanDirKeys.every((k) => clientSrc.includes(k)),
+    scanDirKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 工程下拉接目录自定义扫描目录（与动态半同契约）',
+    scanDirKeys.every((k) => pkgClientSrc.includes(k)),
+    scanDirKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

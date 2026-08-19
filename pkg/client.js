@@ -139,7 +139,7 @@ window.__ModuleLoader__.load({
         setBusy(true); setMsg('扫描中…')
         try {
           const r = await hostCall('catalog.list', { dir: dir || undefined, depth: 3 })
-          if (r && r.ok) { setData(r); setMsg('共 ' + r.count + ' 个 GIS 数据文件（根：' + r.root + '）') }
+          if (r && r.ok) { setData(r); setMsg('共 ' + r.count + ' 个 GIS 数据文件（根：' + r.root + '）'); store.scanDir = dir; props.notify() }
           else { setData(null); setMsg('失败: ' + (r && r.error || '未知')) }
         } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
         setBusy(false)
@@ -1843,7 +1843,7 @@ window.__ModuleLoader__.load({
       ctx.effect(() => () => { styleEl.remove() }, 'kanyu-gis: styles')
 
       // ------ 包级共享状态（头部按钮 ↔ 全屏工作台） ------
-      const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, selVerts: 0, selFeature: -1, kyuProject: null }
+      const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, selVerts: 0, selFeature: -1, kyuProject: null, scanDir: '' }
       const listeners = new Set()
       function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
       function useStore() {
@@ -1966,11 +1966,12 @@ window.__ModuleLoader__.load({
         // 顶栏工程选择（第八十四轮）：catalog.list 扫 .kyu（数据库类）→ style.list
         // 载入图层清单发布 store.kyuProject；Dock 渲染工程图层组（点击=图层+样式+工程接力）
         const [kyuList, setKyuList] = React.useState([])
+        // 目录页签自定义扫描目录联动（第八十九轮）：scanDir 变更即按该目录重扫 .kyu
         React.useEffect(() => {
-          hostCall('catalog.list', { depth: 3 }).then(r => {
+          hostCall('catalog.list', { dir: s.scanDir || undefined, depth: 3 }).then(r => {
             if (r && r.ok) setKyuList((r.dbItems || []).filter(it => /\.kyu$/i.test(it.path || it.name)).map(it => it.path))
           }).catch(() => {})
-        }, [])
+        }, [s.scanDir])
         async function pickProject(kyu) {
           if (!kyu) { store.kyuProject = null; notify(); return }
           try {
