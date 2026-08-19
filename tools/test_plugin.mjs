@@ -1065,6 +1065,10 @@ async function main() {
   check('client.js 三处 slot 注册', slotsOk);
   check('client.js 激活即自动展开工作台（autoOpened 一次性联动，与静态半同 UX）',
     clientSrc.includes('autoOpened') && clientSrc.includes('store.open = true; notify()'));
+  const fullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
+  check('client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
+    fullKeys.every((k) => clientSrc.includes(k)),
+    fullKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   const tabsOk = ['catalog', 'data', 'map', 'crs', 'gp', 'edit', 'scene3d', 'about']
     .every((t) => clientSrc.includes(`id: '${t}'`));
   check('client.js 七能力页签 + 关于', tabsOk);
@@ -1251,6 +1255,10 @@ async function main() {
   check('pkg/client.js preset 联动：切入自动展开/切出自动收起（转换边）',
     linkKeys.every((k) => pkgClientSrc.includes(k)),
     linkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  const pkgFullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
+  check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
+    pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
+    pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   const dialectClean = !pkgClientSrc.includes('host.call(') && !pkgClientSrc.includes('styles.insert(');
   check('pkg/client.js 无动态沙箱符号调用（host.call(/styles.insert(）', dialectClean);
   check('pkg/client.js 3D 管线对齐内核 scene3d.rs（与动态半同契约）',

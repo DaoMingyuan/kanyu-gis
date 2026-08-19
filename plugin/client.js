@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // 职责：DSH Web GUI 中的「堪舆 GIS 工作台」——
 //   · 会话头部动作行注册「🧭 堪舆GIS」开关按钮（conversation.session.header.actions）
-//   · 全局浮层注册工作台窗口（shell.overlay），七页签对应七大能力域：
+//   · 全局覆盖层注册全屏工作台（shell.overlay 铺满会话中央列），七页签对应七大能力域：
 //       目录 / 数据 / 地图 / 坐标 / 处理 / 编辑 / 3D
 //   · cordis_run 卡片注册组件状态条（tool.view.cordis, key=self）
 //   所有业务调用经 host.call（Package 私有 JSON RPC）到 Host 半的 kanyu CLI 后端。
@@ -13,20 +13,24 @@
 // ============================================================================
 
 const CSS = `
-.kyg-panel{position:fixed;right:16px;top:56px;width:580px;max-height:78vh;display:flex;flex-direction:column;
-  background:rgba(21,26,36,.97);color:#e8ecf4;border:1px solid rgba(200,97,74,.45);border-radius:12px;
-  box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:1200;pointer-events:auto;font-size:13px;overflow:hidden}
-.kyg-head{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(200,97,74,.16);
-  border-bottom:1px solid rgba(255,255,255,.08);font-weight:600}
-.kyg-head .kyg-title{flex:1}
-.kyg-close{background:none;border:none;color:#9aa4b8;cursor:pointer;font-size:15px;padding:2px 6px;border-radius:6px}
-.kyg-close:hover{background:rgba(255,255,255,.1);color:#fff}
+.kyg-shell{position:fixed;display:flex;flex-direction:column;background:#141a24;color:#e8ecf4;
+  border-left:1px solid rgba(200,97,74,.35);box-shadow:-12px 0 40px rgba(0,0,0,.45);
+  z-index:1200;pointer-events:auto;font-size:13px;overflow:hidden}
+.kyg-topbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(200,97,74,.16);
+  border-bottom:1px solid rgba(200,97,74,.3);font-weight:600}
+.kyg-topbar .kyg-title{flex:1}
 .kyg-tabs{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
 .kyg-tab{background:none;border:none;color:#9aa4b8;padding:6px 10px;cursor:pointer;font-size:12px;
   border-radius:8px 8px 0 0;border-bottom:2px solid transparent}
 .kyg-tab:hover{color:#dfe5f0}
 .kyg-tab-active{color:#f0b7a4;border-bottom:2px solid #c8614a;background:rgba(200,97,74,.1)}
-.kyg-body{padding:12px 14px;overflow-y:auto;flex:1}
+.kyg-main{display:flex;flex:1;min-height:0}
+.kyg-dock{width:230px;min-width:230px;border-right:1px solid rgba(255,255,255,.08);overflow-y:auto;padding:8px}
+.kyg-dock-head{display:flex;align-items:center;justify-content:space-between;font-weight:600;padding:2px 4px 8px}
+.kyg-center{flex:1;min-width:0;overflow-y:auto;padding:12px 14px}
+.kyg-status{display:flex;gap:18px;padding:5px 14px;border-top:1px solid rgba(255,255,255,.08);
+  color:#9aa4b8;font-size:11px;align-items:center}
+.kyg-list-item-active{background:rgba(200,97,74,.18)}
 .kyg-row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .kyg-label{color:#9aa4b8;min-width:52px;font-size:12px}
 .kyg-input{flex:1;min-width:120px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
@@ -56,6 +60,9 @@ const CSS = `
 .kyg-header-btn:hover{background:rgba(200,97,74,.15)}
 .kyg-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(200,97,74,.4);
   border-radius:10px;background:rgba(200,97,74,.08);font-size:12px}
+.kyg-reopen{position:fixed;right:18px;bottom:18px;z-index:1200;background:#c8614a;border:none;color:#fff;
+  border-radius:10px;padding:7px 14px;cursor:pointer;font-size:12px;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:auto}
+.kyg-reopen:hover{background:#d97a5f}
 .kyg-badge{background:#c8614a;color:#fff;border-radius:6px;padding:1px 7px;font-size:11px}
 `
 
@@ -1649,7 +1656,7 @@ return {
     }
     styles.insert(CSS)
 
-    // ------ 包级共享状态（头部按钮 ↔ 浮层窗口 ↔ cordis 卡片） ------
+    // ------ 包级共享状态（头部按钮 ↔ 全屏工作台 ↔ cordis 卡片） ------
     const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '' }
     const listeners = new Set()
     function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
@@ -1663,29 +1670,100 @@ return {
       return store
     }
 
+    // ------ 全屏接管：工作台铺满会话中央列（与静态半同构） ------
+    function useCenterRect() {
+      const [rect, setRect] = React.useState(null)
+      React.useEffect(() => {
+        const el = document.querySelector('[class*=centerCol]')
+        if (!el) return undefined
+        const sync = () => {
+          const r = el.getBoundingClientRect()
+          setRect({ left: r.left, top: r.top, width: r.width, height: r.height })
+        }
+        sync()
+        const ro = new ResizeObserver(sync)
+        ro.observe(el)
+        window.addEventListener('resize', sync)
+        return () => { ro.disconnect(); window.removeEventListener('resize', sync) }
+      }, [])
+      return rect
+    }
+
+    // 左侧图层坞：本机数据图层快清单（catalog.list 数据类），点击设当前图层
+    function Dock(props) {
+      const store = props.store
+      const [items, setItems] = React.useState(null)
+      const [msg, setMsg] = React.useState('')
+      async function scan() {
+        setMsg('扫描中…')
+        try {
+          const r = await host.call('catalog.list', { depth: 3 })
+          if (r && r.ok) { setItems(r.dataItems || []); setMsg('') }
+          else setMsg('失败: ' + (r && r.error || '未知'))
+        } catch (e) { setMsg('RPC 失败: ' + (e && e.message || e)) }
+      }
+      React.useEffect(() => { scan() }, [])
+      const knownRef = React.useRef('')
+      React.useEffect(() => {
+        if (!items || !store.path || store.path === knownRef.current) return
+        if (items.some(it => it.path === store.path)) return
+        knownRef.current = store.path
+        scan()
+      }, [store.path])
+      return h('div', { className: 'kyg-dock' },
+        h('div', { className: 'kyg-dock-head' },
+          h('span', null, '图层'),
+          h('button', { className: 'kyg-btn kyg-btn-sub', style: { padding: '1px 8px', fontSize: '11px' }, onClick: scan }, '刷新')),
+        msg ? h('div', { className: 'kyg-hint' }, msg) : null,
+        (items || []).map((it, i) => h('div', {
+          key: i,
+          className: 'kyg-list-item' + (store.path === it.path ? ' kyg-list-item-active' : ''),
+          onClick: () => { store.path = it.path; props.notify() },
+        },
+          h('span', { className: 'ext' }, String(it.ext || '').toUpperCase()),
+          h('span', null, it.name))),
+        items && items.length === 0
+          ? h('div', { className: 'kyg-hint' }, '（无本机数据图层——目录页签扫描或服务拉取）') : null)
+    }
+
     function Workbench() {
       const s = useStore()
       const [tab, setTab] = React.useState('catalog')
+      const rect = useCenterRect()
       // 激活即自动展开一次：动态包仅在 kanyu-gis 组合下加载，
       // 加载本身即「切入 GIS 模式」——与静态半（pkg/client.js prevGis 转换边）同 UX
       const autoOpened = React.useRef(false)
       React.useEffect(() => {
         if (!autoOpened.current && !store.open) { autoOpened.current = true; store.open = true; notify() }
       }, [])
-      if (!s.open) return null
+      if (!s.open) return h('button', {
+        className: 'kyg-reopen', title: '回到堪舆 GIS 工作台',
+        onClick: () => { store.open = true; notify() },
+      }, '🧭 堪舆GIS')
+      if (!rect) return null
       const cur = TABS.find(t => t.id === tab) || TABS[0]
-      return h('div', { className: 'kyg-panel' },
-        h('div', { className: 'kyg-head' },
+      const base = s.path ? String(s.path).split(/[\\/]/).pop() : ''
+      return h('div', { className: 'kyg-shell', style: {
+          left: rect.left + 'px', top: rect.top + 'px',
+          width: rect.width + 'px', height: rect.height + 'px' } },
+        h('div', { className: 'kyg-topbar' },
           h('span', null, '🧭'),
-          h('span', { className: 'kyg-title' }, '堪舆 GIS 工作台'),
+          h('span', null, '堪舆 GIS 工作台'),
           h('span', { className: 'kyg-badge' }, 'kanyu 内核'),
-          h('button', { className: 'kyg-close', onClick: () => { store.open = false; notify() } }, '✕')),
+          h('span', { className: 'kyg-title' }),
+          h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { store.open = false; notify() } }, '返回会话')),
         h('div', { className: 'kyg-tabs' },
           TABS.map(t => h('button', {
             key: t.id, className: 'kyg-tab' + (t.id === tab ? ' kyg-tab-active' : ''),
             onClick: () => setTab(t.id),
           }, t.name))),
-        h('div', { className: 'kyg-body' }, h(cur.C, { store: s, notify })),
+        h('div', { className: 'kyg-main' },
+          h(Dock, { store: s, notify }),
+          h('div', { className: 'kyg-center' }, h(cur.C, { store: s, notify }))),
+        h('div', { className: 'kyg-status' },
+          h('span', null, '页签: ' + cur.name),
+          base ? h('span', null, '当前图层: ' + base) : h('span', null, '未选图层'),
+          h('span', null, '模式: GIS（kanyu-gis）')),
       )
     }
 
@@ -1721,6 +1799,6 @@ return {
       (props) => h(CordisCard, props),
     ))
 
-    console.log('kanyu-gis Client 半已激活：会话头部按钮 + 工作台浮层 + cordis 卡片')
+    console.log('kanyu-gis Client 半已激活：会话头部按钮 + 全屏工作台 + cordis 卡片')
   },
 }

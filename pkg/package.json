@@ -15,5 +15,5 @@
       "immediately": true
     }
   },
-  "description": "堪舆 GIS × DeepSeek Harness 常驻静态插件：dsh/plugin/host.js 的安装适配器（工具面注册进 web profile 工具注册表）+ dsh.client 双面包客户端（GIS 工作台面板随 kanyu-gis preset 联动显示）"
+  "description": "堪舆 GIS × DeepSeek Harness 常驻静态插件：dsh/plugin/host.js 的安装适配器（工具面注册进 web profile 工具注册表）+ dsh.client 双面包客户端（全屏 GIS 工作台随 kanyu-gis preset 联动接管会话中央列）"
 }
