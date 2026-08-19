@@ -26,11 +26,11 @@ window.__ModuleLoader__.load({
     const React = require('react')
 
     const CSS = `
-.kyg-shell{position:fixed;display:flex;flex-direction:column;background:#141a24;color:#e8ecf4;
+.kyg-shell{position:fixed;display:flex;flex-direction:column;background:#16181d;color:#e8ecf4;
   border-left:1px solid rgba(200,97,74,.35);box-shadow:-12px 0 40px rgba(0,0,0,.45);
   z-index:1200;pointer-events:auto;font-size:13px;overflow:hidden}
-.kyg-topbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(200,97,74,.16);
-  border-bottom:1px solid rgba(200,97,74,.3);font-weight:600}
+.kyg-topbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,.03);
+  border-bottom:1px solid rgba(255,255,255,.09);font-weight:600}
 .kyg-topbar .kyg-title{flex:1}
 .kyg-tabs{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
 .kyg-tab{display:inline-flex;flex-direction:column;align-items:center;gap:2px;background:none;
@@ -68,7 +68,7 @@ window.__ModuleLoader__.load({
 .kyg-pre{background:rgba(0,0,0,.35);border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.5;
   white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto;margin:6px 0;font-family:Consolas,monospace}
 .kyg-img{max-width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.12);margin-top:6px}
-.kyg-map-stage{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px;padding:6px;text-align:center;position:relative}
+.kyg-map-stage{width:100%;background:#ffffff;color:#1a2233;border-radius:8px;border:1px solid #d4d7de;margin-top:6px;padding:6px;text-align:center;position:relative}
 .kyg-identify{position:absolute;z-index:6;min-width:180px;max-width:280px;background:rgba(16,22,32,.96);border:1px solid rgba(255,255,255,.18);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.45);text-align:left;transform:translate(-50%,14px)}
 .kyg-identify-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;font-size:12px;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1)}
 .kyg-identify-body{max-height:180px;overflow:auto;padding:4px 8px 6px}
@@ -77,7 +77,7 @@ window.__ModuleLoader__.load({
 .kyg-map-view{overflow:hidden;cursor:grab}
 .kyg-map-view:active{cursor:grabbing}
 .kyg-measure{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5}
-.kyg-canvas{width:100%;background:rgba(10,14,22,.9);border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-top:6px}
+.kyg-canvas{width:100%;background:#ffffff;border-radius:8px;border:1px solid #d4d7de;margin-top:6px}
 .kyg-list-item{padding:5px 8px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:baseline}
 .kyg-list-item:hover{background:rgba(255,255,255,.07)}
 .kyg-list-item .ext{color:#f0b7a4;font-size:11px;min-width:52px}
@@ -94,6 +94,13 @@ window.__ModuleLoader__.load({
 .kyg-reopen{position:fixed;right:18px;bottom:18px;z-index:1200;background:#c8614a;border:none;color:#fff;
   border-radius:10px;padding:7px 14px;cursor:pointer;font-size:12px;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:auto}
 .kyg-reopen:hover{background:#d97a5f}
+.kyg-bottombar{display:flex;align-items:center;gap:4px;padding:4px 14px;border-top:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}
+.kyg-btab{background:none;border:1px solid transparent;color:#9aa4b8;border-radius:6px;padding:3px 12px;cursor:pointer;font-size:12px}
+.kyg-btab:hover{color:#dfe5f0}
+.kyg-btab-on{color:#f0b7a4;border-color:rgba(200,97,74,.5);background:rgba(200,97,74,.12)}
+.kyg-term{height:230px;flex:0 0 auto;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;background:#0d121b}
+.kyg-term-out{flex:1;overflow-y:auto;padding:8px 12px;font-family:Consolas,monospace;font-size:11px;white-space:pre-wrap;color:#c7d0e0;line-height:1.6}
+.kyg-term-in{display:flex;gap:6px;padding:6px 12px;border-top:1px solid rgba(255,255,255,.08);align-items:center}
 .kyg-badge{background:#c8614a;color:#fff;border-radius:6px;padding:1px 7px;font-size:11px}
 `
 
@@ -1033,6 +1040,33 @@ h('div', { className: 'kyg-hint' }, msg),
           h('button', { className: 'kyg-btn', disabled: tbBusy, onClick: tbRun }, '运行 ' + def.name)) : null,
         h(ResultPre, { text: tbOut }),
       )
+    }
+
+    // 受限控制台（2026-08-19 第一百轮：底部「终端」页签；console.run RPC 白名单
+    // kanyu 子命令直通，拒绝链式/重定向——无任意代码执行安全基线，对齐 SECURITY.md）
+    function TabTerm({ store, notify }) {
+      const [lines, setLines] = React.useState(['堪舆受限控制台 —— 仅允许 kanyu 子命令：data / render / crs / tool / edit / agents / introspect / skill\n例：introspect --json ｜ data info examples/buildings.geojson'])
+      const [line, setLine] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const outRef = React.useRef(null)
+      React.useEffect(() => { if (outRef.current) outRef.current.scrollTop = outRef.current.scrollHeight }, [lines])
+      async function run() {
+        const cmd = line.trim(); if (!cmd || busy) return
+        setBusy(true)
+        const r = await hostCall('console.run', { line: cmd })
+        const text = r && typeof r === 'object' ? ((r.stdout || '') + (r.stderr ? (r.stdout ? '\n' : '') + r.stderr : '')) : String(r)
+        setLines(ls => [...ls.slice(-199), 'kanyu> ' + cmd, text.trim() || '(无输出)'])
+        setLine(''); setBusy(false)
+      }
+      return h('div', { className: 'kyg-term' },
+        h('div', { className: 'kyg-term-out', ref: outRef }, lines.join('\n')),
+        h('div', { className: 'kyg-term-in' },
+          h('span', { className: 'kyg-label' }, 'kanyu ›'),
+          h('input', { className: 'kyg-input', value: line, disabled: busy,
+            placeholder: '子命令 + 参数（回车运行，可省略 kanyu 前缀）',
+            onChange: e => setLine(e.target.value),
+            onKeyDown: e => { if (e.key === 'Enter') run() } }),
+          h('button', { className: 'kyg-btn', disabled: busy, onClick: run }, busy ? '运行中…' : '运行')))
     }
 
     function TabGp(props) {
@@ -2178,6 +2212,8 @@ h('div', { className: 'kyg-hint' }, msg),
         const [tab, setTab] = React.useState('catalog')
         // 右侧分析面板开关（2026-08-19 第九十九轮 ArcGIS Pro 工具箱范式）
         const [gpOpen, setGpOpen] = React.useState(false)
+        // btab：底部条页签（map=满高 / chat=压壳露宿主会话 / term=壳内受限控制台）
+        const [btab, setBtab] = React.useState('map')
         const rect = useCenterRect()
         // 顶栏工程选择（第八十四轮）：catalog.list 扫 .kyu（数据库类）→ style.list
         // 载入图层清单发布 store.kyuProject；Dock 渲染工程图层组（点击=图层+样式+工程接力）
@@ -2218,7 +2254,7 @@ h('div', { className: 'kyg-hint' }, msg),
         const base = s.path ? String(s.path).split(/[\\/]/).pop() : ''
         return h('div', { className: 'kyg-shell', style: {
             left: rect.left + 'px', top: rect.top + 'px',
-            width: rect.width + 'px', height: rect.height + 'px' } },
+            width: rect.width + 'px', height: (btab === 'chat' ? Math.round(rect.height * 0.52) : rect.height) + 'px' } },
           h('div', { className: 'kyg-topbar' },
             kanyuIcon('compass', 17),
             h('span', null, '堪舆 GIS 工作台'),
@@ -2227,8 +2263,7 @@ h('div', { className: 'kyg-hint' }, msg),
               value: s.kyuProject ? s.kyuProject.kyu : '', onChange: e => pickProject(e.target.value) },
               h('option', { value: '' }, '（无工程）'),
               kyuList.map(p => h('option', { key: p, value: p }, String(p).split(/[\\/]/).pop()))),
-            h('span', { className: 'kyg-title' }),
-            h('button', { className: 'kyg-btn kyg-btn-sub', onClick: () => { store.open = false; notify() } }, '返回会话')),
+            h('span', { className: 'kyg-title' })),
           h('div', { className: 'kyg-tabs' },
             KYG_GRPS.map(g => h('div', { key: g, className: 'kyg-grp' },
               h('div', { className: 'kyg-grp-btns' },
@@ -2253,6 +2288,17 @@ h('div', { className: 'kyg-hint' }, msg),
                 h('span', null, '地理处理'),
                 h('button', { className: 'kyg-btn kyg-btn-sub', style: { padding: '1px 8px', fontSize: '11px' }, onClick: () => setGpOpen(false) }, '收起')),
               h(TabGp, { store: s, notify })) : null),
+          // 底部条（2026-08-19 第一百轮：地图/会话/终端三页签融合——「会话」压壳
+          // 露出宿主会话区（功能完整性由宿主保证），「终端」为壳内受限控制台；
+          // 「收起」关工作台，kyg-reopen 浮动钮重开，替代原顶栏「返回会话」）
+          btab === 'term' ? h(TabTerm, { store: s, notify }) : null,
+          h('div', { className: 'kyg-bottombar' },
+            [['map', '地图'], ['chat', '会话'], ['term', '终端']].map(([id, name]) =>
+              h('button', { key: id, className: 'kyg-btab' + (btab === id ? ' kyg-btab-on' : ''),
+                title: id === 'chat' ? '压缩工作台，下方露出宿主会话区' : id === 'term' ? '壳内受限控制台（kanyu 子命令白名单）' : '完整工作台视图',
+                onClick: () => setBtab(id) }, name)),
+            h('span', { style: { flex: 1 } }),
+            h('button', { className: 'kyg-btn kyg-btn-sub', title: '收起工作台（右下角浮动钮重开）', onClick: () => { store.open = false; notify() } }, '收起')),
           h('div', { className: 'kyg-status' },
             h('span', null, '页签: ' + cur.name),
             base ? h('span', null, '当前图层: ' + base) : h('span', null, '未选图层'),

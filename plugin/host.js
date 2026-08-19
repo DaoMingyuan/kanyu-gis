@@ -1527,6 +1527,21 @@ return {
     })
     harness.handle('scene3d.data', async (a) => scene3dData(a && a.path, a && a.heightField, a && a.maxFeatures, a && a.colorField, a && a.symbology))
 
+    // ---------- 受限控制台（2026-08-19 第一百轮：壳内终端页签后端） ----------
+    // 白名单直通 kanyu 子命令；拒绝链式/重定向/替换符号——无任意代码执行安全基线
+    const CONSOLE_SUBS = ['data', 'render', 'crs', 'tool', 'edit', 'agents', 'introspect', 'skill']
+    harness.handle('console.run', async (a) => {
+      const line = String(a && a.line || '').trim()
+      if (!line) return { ok: false, exitCode: null, stdout: '', stderr: '空命令', truncated: false }
+      let args = line.split(/\s+/)
+      if (args[0] === 'kanyu') args = args.slice(1)
+      if (!CONSOLE_SUBS.includes(args[0]))
+        return { ok: false, exitCode: null, stdout: '', stderr: '仅允许 kanyu 子命令：' + CONSOLE_SUBS.join(' / '), truncated: false }
+      if (/[|&;><`$]/.test(line))
+        return { ok: false, exitCode: null, stdout: '', stderr: '拒绝链式/重定向/替换符号（无任意代码执行安全基线）', truncated: false }
+      return runKanyu(args.map(q), 120000)
+    })
+
     // ---------- 动态模型工具（堪舆 AI 能力 → Harness function-calling） ----------
     // 原壳层 LocalDriver 意图匹配/OpenAiDriver function calling 的能力面，
     // 在 DSH 组件中收敛为 9 个注册进 Harness 工具注册表的一等工具，

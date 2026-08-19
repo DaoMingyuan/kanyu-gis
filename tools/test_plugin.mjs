@@ -143,12 +143,14 @@ async function main() {
   // 装载
   const plugin = await loadPlugin(dshPath('plugin', 'host.js'));
   check('装载 host.js 并 apply', plugin.name === 'kanyu-gis', 'name=' + plugin.name);
-  check('RPC 注册齐全（34 个）', rpc.size === 34, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
+  check('RPC 注册齐全（35 个）', rpc.size === 35, '实际 ' + rpc.size + '：' + [...rpc.keys()].join(','));
   check('动态工具注册齐全（9 个 kanyu_*）', tools.size === 9, [...tools.keys()].join(','));
   // 写拒绝指引（2026-08-18 第十八轮）：workspace-write 模式的中文可操作提示
   const hostSrc = await fsp.readFile(path.join(REPO_ROOT, dshPath('plugin', 'host.js')), 'utf8');
   check('host.js 写回失败含 workspace-write 可操作指引（3080 实测 fs 只读工作区外）',
     hostSrc.includes('workspace-write') && hostSrc.includes('writeHint'));
+  check('host.js 受限控制台 console.run（kanyu 子命令白名单 + 拒链式符号）',
+    hostSrc.includes('console.run') && hostSrc.includes('CONSOLE_SUBS') && hostSrc.includes('仅允许 kanyu 子命令') && hostSrc.includes('拒绝链式'));
   // data.query 落盘健壮性（2026-08-18 第二十六轮）：kanyu --output 底层不建父目录，须先 ensureOutDir
   check('host.js dataQuery 落盘前 ensureOutDir（dsh/output 缺省时 --output 写失败防护）',
     /async function dataQuery[\s\S]*?ensureOutDir\(\)/.test(hostSrc));
@@ -1108,7 +1110,7 @@ async function main() {
   check('client.js 三处 slot 注册', slotsOk);
   check('client.js 激活即自动展开工作台（autoOpened 一次性联动，与静态半同 UX）',
     clientSrc.includes('autoOpened') && clientSrc.includes('store.open = true; notify()'));
-  const fullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
+  const fullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', 'kyg-bottombar', 'kyg-reopen'];
   const mapStageKeys = ['stageRef', 'firstRef', 'kyg-map-stage', '导出地图图片', 'exportPng'];
   // 地图页签 GIS 化（2026-08-19 第九十八轮）：2D/3D 视图切换 + 主题选择器删除
   //（固定 light，夜观星 UI 零残留）+ 样式折叠区 + 画布铺满
@@ -1271,6 +1273,10 @@ async function main() {
   check('client.js 分析工具右侧面板（kyg-right + ribbon 分析开关 + TabGp 工具搜索清单）',
     gpRightKeys.every((k) => clientSrc.includes(k)),
     gpRightKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  const bottomKeys = ['kyg-bottombar', 'kyg-btab', 'kyg-term', 'setBtab', '受限控制台', '#ffffff'];
+  check('client.js 底部会话/终端融合 + 地图白底（bottombar 三页签 + TabTerm + kyg-map-stage 白底）',
+    bottomKeys.every((k) => clientSrc.includes(k)),
+    bottomKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   check('client.js 处理页签工具箱全库表单（ToolboxPanel + toolbox.list/run + 分类分组）',
     tbKeys.every((k) => clientSrc.includes(k)),
     tbKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
@@ -1347,7 +1353,7 @@ async function main() {
   check('pkg/client.js preset 联动：切入自动展开/切出自动收起（转换边）',
     linkKeys.every((k) => pkgClientSrc.includes(k)),
     linkKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
-  const pkgFullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', '返回会话', 'kyg-reopen'];
+  const pkgFullKeys = ['kyg-shell', 'kyg-topbar', 'kyg-dock', 'kyg-center', 'kyg-status', 'useCenterRect', 'centerCol', 'kyg-bottombar', 'kyg-reopen'];
   const pkgMapStageKeys = ['stageRef', 'firstRef', 'kyg-map-stage', '导出地图图片', 'exportPng'];
   check('pkg/client.js 地图页签 GIS 化（与动态半同契约）',
     mapGisKeys.every((k) => pkgClientSrc.includes(k)) && !pkgClientSrc.includes('夜观星'),
@@ -1523,6 +1529,9 @@ async function main() {
   check('pkg/client.js 分析工具右侧面板（与动态半同契约）',
     gpRightKeys.every((k) => pkgClientSrc.includes(k)),
     gpRightKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 底部会话/终端融合 + 地图白底（与动态半同契约）',
+    bottomKeys.every((k) => pkgClientSrc.includes(k)),
+    bottomKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 处理页签工具箱全库表单（与动态半同契约）',
     tbKeys.every((k) => pkgClientSrc.includes(k)),
     tbKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
