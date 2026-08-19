@@ -520,7 +520,7 @@ function TabMap(props) {
       if (res && res.ok && res.index >= 0) {
         store.selFeature = res.index
         const sr = stageRef.current ? stageRef.current.getBoundingClientRect() : r
-        setIdentify({ x: e.clientX - sr.left, y: e.clientY - sr.top, props: res.properties || {}, index: res.index, geom: res.geomType })
+        setIdentify({ x: e.clientX - sr.left, y: e.clientY - sr.top, props: res.properties || {}, index: res.index, geom: res.geomType, centroid: res.centroid || null })
         setMsg('点选命中要素 #' + res.index + '（' + res.geomType + '，距离 ' + res.distance + '）')
       } else {
         store.selFeature = -1
@@ -531,6 +531,19 @@ function TabMap(props) {
     } catch (e2) { setMsg('RPC 失败: ' + (e2 && e2.message || e2)) }
   }
   function onIdentifyClose() { setIdentify(null); store.selFeature = -1; if (props.notify) props.notify() }
+  // 定位至此（2026-08-19 第九十四轮）：浮层一键缩放居中到命中要素——
+  // zf=2，pan = (容器中心 − 要素内容点)×倍率（translate+scale origin=center 反解）
+  function onLocateFeature() {
+    if (!identify || !identify.centroid || !store.mapExtent) return
+    const imgEl = stageRef.current && stageRef.current.querySelector('.kyg-img')
+    if (!imgEl || !imgEl.offsetWidth) return
+    const ex = store.mapExtent
+    const w0 = imgEl.offsetWidth, h0 = imgEl.offsetHeight
+    const px = (identify.centroid[0] - ex[0]) / (ex[2] - ex[0]) * w0
+    const py = (ex[3] - identify.centroid[1]) / (ex[3] - ex[1]) * h0
+    const z = 2
+    setZf(z); setPan({ x: Math.round((w0 / 2 - px) * z), y: Math.round((h0 / 2 - py) * z) }); pubZoom(z)
+  }
   // 状态栏鼠标坐标跟踪（2026-08-19 第九十二轮 GIS 标配）：mousemove → 像素分数
   // 反算地图坐标（与 onMapIdentify 同公式，extent y 顶=maxy 翻转）→
   // store.mapCursor 节流发布（≥60ms），状态栏实时显示；出图区即清空
@@ -788,7 +801,7 @@ h('div', { className: 'kyg-hint' }, msg),
               measurePts.map((p, i) => h('circle', { key: i, cx: p[0], cy: p[1], r: 0.004, fill: '#D9A23C' }))) : null
 )),
                     identify ? h('div', { className: 'kyg-identify', style: { left: identify.x + 'px', top: identify.y + 'px' } },
-            h('div', { className: 'kyg-identify-head' }, h('span', null, '要素 #' + identify.index + ' · ' + identify.geom), h('button', { className: 'kyg-btn kyg-btn-sub', title: '关闭', onClick: onIdentifyClose }, '×')),
+            h('div', { className: 'kyg-identify-head' }, h('span', null, '要素 #' + identify.index + ' · ' + identify.geom), h('span', null, identify.centroid ? h('button', { className: 'kyg-btn kyg-btn-sub', title: '缩放并居中到该要素', onClick: onLocateFeature }, '定位') : null, h('button', { className: 'kyg-btn kyg-btn-sub', title: '关闭', onClick: onIdentifyClose }, '×'))),
             Object.keys(identify.props).length ? h('div', { className: 'kyg-identify-body' }, Object.keys(identify.props).map(k => h('div', { className: 'kyg-identify-row', key: k }, h('span', { className: 'kyg-identify-k' }, k), h('span', null, String(identify.props[k]))))) : h('div', { className: 'kyg-identify-body' }, h('div', { className: 'kyg-hint' }, '（无属性）'))) : null) : null,
   )
 }

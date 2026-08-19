@@ -374,6 +374,10 @@ async function main() {
     JSON.stringify(idn).slice(0, 160));
   const idnMiss = await callRpc('data.identify', { path: EXAMPLE, x: 116.60, y: 40.20, tol: 0.0001 });
   check('data.identify：域外点选无命中（index:-1）', idnMiss.ok && idnMiss.index === -1);
+  // 「定位至此」回执面（第九十四轮）：命中含 centroid 范围中心（点要素=自身坐标）
+  check('data.identify：回执含 centroid（示例大厦A=自身坐标）',
+    Array.isArray(idn.centroid) && Math.abs(idn.centroid[0] - 116.3914) < 1e-9 && Math.abs(idn.centroid[1] - 39.9072) < 1e-9,
+    JSON.stringify(idn.centroid));
   const tData = tools.get('kanyu_data');
   const prevText = tData && await tData.execute({ action: 'preview', path: EXAMPLE });
   check('动态工具 kanyu_data(preview)：属性表文本（字段头 + 行）',
@@ -1376,6 +1380,15 @@ async function main() {
   check('pkg/client.js 地图画布量测（与动态半同契约）',
     measureKeys.every((k) => pkgClientSrc.includes(k)),
     measureKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // identify 浮层「定位至此」（2026-08-19 第九十四轮）：回执 centroid → 浮层
+  // 定位钮 → zf=2 + pan (中心−要素点)×倍率 居中命中要素
+  const locateKeys = ['onLocateFeature', 'centroid', '定位', '缩放并居中到该要素'];
+  check('client.js identify 浮层定位至此（centroid + zf2 居中）',
+    locateKeys.every((k) => clientSrc.includes(k)),
+    locateKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js identify 浮层定位至此（与动态半同契约）',
+    locateKeys.every((k) => pkgClientSrc.includes(k)),
+    locateKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');

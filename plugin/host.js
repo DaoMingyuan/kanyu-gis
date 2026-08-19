@@ -341,7 +341,20 @@ return {
       })
       if (!best) return { ok: true, index: -1, properties: null, distance: null, geomType: null }
       const f = feats[best.index]
-      return { ok: true, index: best.index, properties: (f && f.properties) || {}, distance: Math.round(best.distance * 1e6) / 1e6, geomType: best.geomType }
+      // 几何范围中心（顶点递归求 bbox 中点，「定位至此」缩放居中用；近似足够）
+      function geomCenter(g) {
+        let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity
+        const walk = (c) => {
+          if (!Array.isArray(c)) return
+          if (typeof c[0] === 'number') {
+            if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0]
+            if (c[1] < miny) miny = c[1]; if (c[1] > maxy) maxy = c[1]
+          } else c.forEach(walk)
+        }
+        walk(g && g.coordinates)
+        return isFinite(minx) ? [(minx + maxx) / 2, (miny + maxy) / 2] : null
+      }
+      return { ok: true, index: best.index, properties: (f && f.properties) || {}, distance: Math.round(best.distance * 1e6) / 1e6, geomType: best.geomType, centroid: geomCenter(f && f.geometry) }
     }
 
     // ------ 能力 1：地图面板（离屏渲染 → base64 PNG 回传 Client） ------
