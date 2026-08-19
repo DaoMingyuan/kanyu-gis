@@ -463,6 +463,7 @@ function TabMap(props) {
   // 要素点选浮层 + 拖拽抑制（第九十一轮）：拖拽超 4px 抑制随后的 click 误触发
   const [identify, setIdentify] = React.useState(null)
   const suppRef = React.useRef(false)
+  const curRef = React.useRef(0)
   // 画布缩放/平移（第八十七轮）：滚轮 1.2 倍步进（0.5–16×）、拖拽平移、
   // 双击复位；倍率经 store.mapZoom 发布，状态栏比例尺 = 渲染比例尺 ÷ 倍率
   const [zf, setZf] = React.useState(1)
@@ -525,6 +526,25 @@ function TabMap(props) {
     } catch (e2) { setMsg('RPC 失败: ' + (e2 && e2.message || e2)) }
   }
   function onIdentifyClose() { setIdentify(null); store.selFeature = -1; if (props.notify) props.notify() }
+  // 状态栏鼠标坐标跟踪（2026-08-19 第九十二轮 GIS 标配）：mousemove → 像素分数
+  // 反算地图坐标（与 onMapIdentify 同公式，extent y 顶=maxy 翻转）→
+  // store.mapCursor 节流发布（≥60ms），状态栏实时显示；出图区即清空
+  function onMapMove(e) {
+    if (!store.mapExtent) return
+    const now = Date.now()
+    if (now - curRef.current < 60) return
+    const imgEl = e.currentTarget.querySelector('.kyg-img')
+    if (!imgEl) return
+    const r = imgEl.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height
+    if (fx < 0 || fx > 1 || fy < 0 || fy > 1) { if (store.mapCursor) { store.mapCursor = null; curRef.current = now; if (props.notify) props.notify() } return }
+    const ex = store.mapExtent
+    store.mapCursor = [ex[0] + fx * (ex[2] - ex[0]), ex[3] - fy * (ex[3] - ex[1])]
+    curRef.current = now
+    if (props.notify) props.notify()
+  }
+  function onMapLeave() { if (store.mapCursor) { store.mapCursor = null; if (props.notify) props.notify() } }
   // 滚轮须非 passive 监听（React 根代理 wheel 为 passive，preventDefault 不生效）
   React.useEffect(() => {
     const el = viewRef.current
@@ -696,7 +716,7 @@ function TabMap(props) {
       h('button', { className: 'kyg-btn', disabled: busy || !kyuPath || !layerId || symMethod === 'none', onClick: styleSave }, '写入工程')),
     h('div', { className: 'kyg-hint' }, msg),
     img ? h('div', { ref: stageRef, className: 'kyg-map-stage' },
-      h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位 · 单击点选要素', onMouseDown: onMapDown, onDoubleClick: onMapReset, onClick: onMapIdentify },
+      h('div', { ref: viewRef, className: 'kyg-map-view', title: '滚轮缩放 · 拖拽平移 · 双击复位 · 单击点选要素', onMouseDown: onMapDown, onDoubleClick: onMapReset, onClick: onMapIdentify, onMouseMove: onMapMove, onMouseLeave: onMapLeave },
         h('div', { style: { position: 'relative', display: 'inline-block', maxWidth: '100%', transform: 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zf + ')', transformOrigin: 'center center', transition: dragRef.current ? 'none' : 'transform .12s' } },
           baseImg ? h('img', { src: baseImg, alt: 'WMS 底图', draggable: false, style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: '8px' } }) : null,
           h('img', { className: 'kyg-img', src: img, alt: '地图渲染', draggable: false, style: { position: 'relative', display: 'block', margin: 0 } }))),
@@ -1858,7 +1878,7 @@ return {
     styles.insert(CSS)
 
     // ------ 包级共享状态（头部按钮 ↔ 全屏工作台 ↔ cordis 卡片） ------
-    const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, mapExtent: null, selVerts: 0, selFeature: -1, kyuProject: null, scanDir: '' }
+    const store = { open: false, path: '', rev: 0, sym: null, kyu: '', layerId: '', mapInfo: null, mapExtent: null, mapCursor: null, selVerts: 0, selFeature: -1, kyuProject: null, scanDir: '' }
     const listeners = new Set()
     function notify() { listeners.forEach(f => { try { f() } catch (e) { /* 忽略单监听器故障 */ } }) }
     function useStore() {
@@ -2005,6 +2025,7 @@ return {
           s.mapZoom && s.mapZoom !== 1 ? h('span', null, '缩放: ×' + s.mapZoom.toFixed(2)) : null,
           s.selVerts > 0 ? h('span', null, '已选顶点: ' + s.selVerts) : null,
           s.selFeature >= 0 ? h('span', null, '选中要素 #' + s.selFeature) : null,
+          s.mapCursor ? h('span', { title: '画布鼠标位置（地图坐标，随缩放/平移实时反算）' }, '坐标: ' + s.mapCursor[0].toFixed(5) + ', ' + s.mapCursor[1].toFixed(5)) : null,
           h('span', null, '模式: GIS（kanyu-gis）')),
       )
     }

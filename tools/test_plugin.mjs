@@ -1356,6 +1356,16 @@ async function main() {
   check('pkg/client.js 地图画布要素点选查询（与动态半同契约）',
     identifyKeys.every((k) => pkgClientSrc.includes(k)),
     identifyKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
+  // 状态栏鼠标坐标跟踪（2026-08-19 第九十二轮 GIS 标配）：画布 mousemove
+  // 节流（≥60ms）→ 像素分数反算地图坐标 → store.mapCursor → 状态栏实时
+  // 「坐标: x, y」；mouseleave/出图区清空
+  const cursorKeys = ['mapCursor', 'onMapMove', 'onMapLeave', 'curRef', '坐标: '];
+  check('client.js 状态栏鼠标坐标实时跟踪（画布 mousemove 节流反算）',
+    cursorKeys.every((k) => clientSrc.includes(k)),
+    cursorKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
+  check('pkg/client.js 状态栏鼠标坐标实时跟踪（与动态半同契约）',
+    cursorKeys.every((k) => pkgClientSrc.includes(k)),
+    cursorKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
   check('pkg/client.js 全屏工作台布局（中央列接管：顶栏/图层坞/中央区/状态栏 + useCenterRect）',
     pkgFullKeys.every((k) => pkgClientSrc.includes(k)),
     pkgFullKeys.filter((k) => !pkgClientSrc.includes(k)).join(',') || '全部命中');
