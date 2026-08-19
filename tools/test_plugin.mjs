@@ -1187,7 +1187,8 @@ async function main() {
     qryTblKeys.every((k) => clientSrc.includes(k)),
     qryTblKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
   // 坐标页签投影变换联动（2026-08-18 第二十七轮）：runReproject 落盘 + 计数 + 设为当前图层
-  const crsKeys = ['runReproject', 'kanyu-reproject-', 'crs.search', '已设为当前图层'];
+  // + 检索命中双按钮（2026-08-19 第七十九轮）：「源」/「目标」分设 CRS（替代整行点击只设目标）
+  const crsKeys = ['runReproject', 'kanyu-reproject-', 'crs.search', '已设为当前图层', 'setFrom(c.code)', '按钮分设 CRS'];
   check('client.js 坐标页签投影变换联动（runReproject + 落盘 dsh/output + 设为当前图层）',
     crsKeys.every((k) => clientSrc.includes(k)),
     crsKeys.filter((k) => !clientSrc.includes(k)).join(',') || '全部命中');
